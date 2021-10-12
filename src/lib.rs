@@ -7,5 +7,6 @@ pub mod data;
 pub mod market;
 pub mod order;
 pub mod position;
+pub mod simulator;
 pub mod slippage;
-//pub mod strategy;
+pub mod strategy;

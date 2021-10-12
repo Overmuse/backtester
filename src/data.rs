@@ -4,77 +4,21 @@ use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::path::PathBuf;
+use thiserror::Error;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Aggregate {
-    pub datetime: DateTime<Utc>,
-    pub open: Decimal,
-    pub high: Decimal,
-    pub low: Decimal,
-    pub close: Decimal,
-    pub volume: Decimal,
-}
-
-pub struct DataProvider<P, D, S> {
-    price_downloader: P,
-    dividend_downloader: D,
-    split_downloader: S,
-}
-
-impl<P: PriceDownloader, D, S> DataProvider<P, D, S> {
-    pub async fn download(
-        &self,
-        tickers: Vec<String>,
-        start: NaiveDate,
-        end: NaiveDate,
-    ) -> Result<HashMap<String, Vec<Aggregate>>, P::Error> {
-        let prices = self
-            .price_downloader
-            .download_prices(tickers, start, end)
-            .await?;
-        Ok(prices)
-    }
-}
-
-#[async_trait]
-pub trait PriceDownloader {
-    type Error;
-    async fn download_prices(
-        &self,
-        tickers: Vec<String>,
-        start: NaiveDate,
-        end: NaiveDate,
-    ) -> Result<HashMap<String, Vec<Aggregate>>, Self::Error>;
-}
-
-pub trait DividendDownloader {
-    fn download_dividends();
-}
-
-pub trait SplitDownloader {
-    fn download_splits();
-}
-
-pub trait DataCache {
-    type Error;
-
-    fn is_cache_valid(&self, ctx: Context) -> bool;
-    fn save_prices(&self, prices: HashMap<String, Vec<Aggregate>>) -> Result<(), Self::Error>;
-    fn load_prices(&self) -> Result<HashMap<String, Vec<Aggregate>>, Self::Error>;
-}
-
-struct FileDataCache<P, D, S> {
-    dir: PathBuf,
-    data_provider: DataProvider<P, D, S>,
-}
-
-enum Error {
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("{0}")]
     Io(std::io::Error),
+    #[error("{0}")]
     Serde(serde_json::Error),
+    #[cfg(feature = "polygon")]
+    #[error("{0}")]
+    Polygon(::polygon::errors::Error),
 }
 
 impl From<std::io::Error> for Error {
@@ -87,14 +31,86 @@ impl From<serde_json::Error> for Error {
         Self::Serde(e)
     }
 }
+#[cfg(feature = "polygon")]
+impl From<::polygon::errors::Error> for Error {
+    fn from(e: ::polygon::errors::Error) -> Self {
+        Self::Polygon(e)
+    }
+}
 
-impl<P, D, S> DataCache for FileDataCache<P, D, S> {
-    type Error = Error;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Aggregate {
+    pub datetime: DateTime<Utc>,
+    pub open: Decimal,
+    pub high: Decimal,
+    pub low: Decimal,
+    pub close: Decimal,
+    pub volume: Decimal,
+}
+
+pub struct DataProvider {
+    price_downloader: Box<dyn PriceDownloader>,
+    dividend_downloader: Box<dyn DividendDownloader>,
+    split_downloader: Box<dyn SplitDownloader>,
+}
+
+type PriceData = HashMap<String, BTreeMap<DateTime<Utc>, Aggregate>>;
+
+#[derive(Debug)]
+pub struct MarketData {
+    pub prices: PriceData,
+}
+
+impl DataProvider {
+    pub async fn download(
+        &self,
+        tickers: Vec<String>,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> Result<MarketData, Error> {
+        let prices = self
+            .price_downloader
+            .download_prices(tickers, start, end)
+            .await?;
+        Ok(MarketData { prices })
+    }
+}
+
+#[async_trait]
+pub trait PriceDownloader {
+    async fn download_prices(
+        &self,
+        tickers: Vec<String>,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> Result<PriceData, Error>;
+}
+
+pub trait DividendDownloader {
+    fn download_dividends(&self);
+}
+
+pub trait SplitDownloader {
+    fn download_splits(&self);
+}
+
+pub trait DataCache {
+    fn is_cache_valid(&self, ctx: Context) -> bool;
+    fn save_prices(&self, prices: HashMap<String, Vec<Aggregate>>) -> Result<(), Error>;
+    fn load_prices(&self) -> Result<HashMap<String, Vec<Aggregate>>, Error>;
+}
+
+struct FileDataCache {
+    dir: PathBuf,
+    data_provider: DataProvider,
+}
+
+impl DataCache for FileDataCache {
     fn is_cache_valid(&self, _ctx: Context) -> bool {
         todo!()
     }
 
-    fn save_prices(&self, prices: HashMap<String, Vec<Aggregate>>) -> Result<(), Self::Error> {
+    fn save_prices(&self, prices: HashMap<String, Vec<Aggregate>>) -> Result<(), Error> {
         let mut path = self.dir.clone();
         path.push("prices.json");
         let mut file = OpenOptions::new().write(true).open(path)?;
@@ -103,7 +119,7 @@ impl<P, D, S> DataCache for FileDataCache<P, D, S> {
         Ok(())
     }
 
-    fn load_prices(&self) -> Result<HashMap<String, Vec<Aggregate>>, Self::Error> {
+    fn load_prices(&self) -> Result<HashMap<String, Vec<Aggregate>>, Error> {
         let mut path = self.dir.clone();
         path.push("prices.json");
         let bytes = std::fs::read(path)?;
@@ -115,10 +131,7 @@ impl<P, D, S> DataCache for FileDataCache<P, D, S> {
 #[cfg(feature = "polygon")]
 pub mod polygon {
     use super::*;
-    use ::polygon::{
-        errors::Error,
-        rest::{Aggregate as PolygonAggregate, AggregateWrapper, Client, GetAggregate},
-    };
+    use ::polygon::rest::{Aggregate as PolygonAggregate, AggregateWrapper, Client, GetAggregate};
 
     pub struct PolygonPriceDownloader;
 
@@ -137,23 +150,33 @@ pub mod polygon {
 
     #[async_trait]
     impl PriceDownloader for PolygonPriceDownloader {
-        type Error = Error;
         async fn download_prices(
             &self,
             tickers: Vec<String>,
             start: NaiveDate,
             end: NaiveDate,
-        ) -> Result<HashMap<String, Vec<Aggregate>>, Self::Error> {
+        ) -> Result<PriceData, Error> {
             let client = Client::from_env()?;
             let queries = tickers
                 .iter()
                 .map(|ticker| GetAggregate::new(ticker, start, end));
-            let wrappers: Result<Vec<AggregateWrapper>, Self::Error> =
-                client.send_all(queries).await.into_iter().collect();
-            let data: HashMap<String, Vec<Aggregate>> = wrappers?
+            let wrappers: Result<Vec<AggregateWrapper>, Error> = client
+                .send_all(queries)
+                .await
+                .into_iter()
+                .map(|x| x.map_err(From::from))
+                .collect();
+            let data: HashMap<String, BTreeMap<DateTime<Utc>, Aggregate>> = wrappers?
                 .into_iter()
                 .map(|w| (w.ticker, w.results.unwrap_or_default()))
-                .map(|(ticker, data)| (ticker, data.into_iter().map(From::from).collect()))
+                .map(|(ticker, data)| {
+                    (
+                        ticker,
+                        data.into_iter()
+                            .map(|agg| (agg.t, From::from(agg)))
+                            .collect(),
+                    )
+                })
                 .collect();
             Ok(data)
         }
@@ -161,21 +184,19 @@ pub mod polygon {
 
     pub struct PolygonDividendDownloader;
     impl DividendDownloader for PolygonDividendDownloader {
-        fn download_dividends() {}
+        fn download_dividends(&self) {}
     }
 
     pub struct PolygonSplitDownloader;
     impl SplitDownloader for PolygonSplitDownloader {
-        fn download_splits() {}
+        fn download_splits(&self) {}
     }
 
-    pub fn polygon_downloader(
-    ) -> DataProvider<PolygonPriceDownloader, PolygonDividendDownloader, PolygonSplitDownloader>
-    {
+    pub fn polygon_downloader() -> DataProvider {
         DataProvider {
-            price_downloader: PolygonPriceDownloader,
-            dividend_downloader: PolygonDividendDownloader,
-            split_downloader: PolygonSplitDownloader,
+            price_downloader: Box::new(PolygonPriceDownloader),
+            dividend_downloader: Box::new(PolygonDividendDownloader),
+            split_downloader: Box::new(PolygonSplitDownloader),
         }
     }
 }

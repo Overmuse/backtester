@@ -59,7 +59,7 @@ impl Clock {
         }
     }
 
-    fn tick(&mut self) {
+    pub fn tick(&mut self) {
         let datetime = match self.datetime() {
             Some(datetime) => datetime,
             None => return,

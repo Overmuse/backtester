@@ -5,6 +5,7 @@ edition = "2018"
 publish = false
 
 [dependencies]
+anyhow = "1.0.44"
 backtester = { path = "../..", features = ["polygon"] }
 chrono = "0.4"
 dotenv = "0.15.0"
