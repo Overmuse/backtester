@@ -10,8 +10,8 @@ async fn main() {
     let out = downloader
         .download(
             tickers,
-            NaiveDate::from_ymd(2021, 1, 1),
-            NaiveDate::from_ymd(2021, 10, 1),
+            NaiveDate::from_ymd(2021, 01, 01),
+            NaiveDate::from_ymd(2021, 10, 01),
         )
         .await;
     println!("{:?}", out);

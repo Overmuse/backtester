@@ -31,6 +31,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "num-traits",
  "polygon 0.11.2",
  "rust_decimal",
  "serde",
