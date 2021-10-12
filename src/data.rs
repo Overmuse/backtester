@@ -99,7 +99,7 @@ impl<P, D, S> DataCache for FileDataCache<P, D, S> {
         path.push("prices.json");
         let mut file = OpenOptions::new().write(true).open(path)?;
         let bytes = serde_json::to_vec(&prices)?;
-        file.write(&bytes)?;
+        file.write_all(&bytes)?;
         Ok(())
     }
 
@@ -152,7 +152,7 @@ pub mod polygon {
                 client.send_all(queries).await.into_iter().collect();
             let data: HashMap<String, Vec<Aggregate>> = wrappers?
                 .into_iter()
-                .map(|w| (w.ticker, w.results.unwrap_or(Vec::new())))
+                .map(|w| (w.ticker, w.results.unwrap_or_default()))
                 .map(|(ticker, data)| (ticker, data.into_iter().map(From::from).collect()))
                 .collect();
             Ok(data)
