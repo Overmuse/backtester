@@ -6,7 +6,7 @@ pub trait Commission {
 
 pub struct NoCommission;
 impl Commission for NoCommission {
-    fn calculate(&self, order: &Order) -> f64 {
+    fn calculate(&self, _: &Order) -> f64 {
         0.0
     }
 }
@@ -46,7 +46,7 @@ impl PerOrderCommission {
     }
 }
 impl Commission for PerOrderCommission {
-    fn calculate(&self, order: &Order) -> f64 {
+    fn calculate(&self, _: &Order) -> f64 {
         self.amount
     }
 }
