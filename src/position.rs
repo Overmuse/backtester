@@ -66,9 +66,13 @@ impl Position {
             .fold(Decimal::ZERO, |acc, lot| acc + lot.quantity * lot.price)
     }
 
-    pub fn average_price(&self) -> Decimal {
-        // TODO: We could do this in one pass if we need more performance
-        self.cost_basis() / self.quantity()
+    pub fn average_price(&self) -> Option<Decimal> {
+        let qty = self.quantity();
+        if qty.is_zero() {
+            None
+        } else {
+            Some(self.cost_basis() / qty)
+        }
     }
 }
 
@@ -87,7 +91,7 @@ mod test {
         );
         assert_eq!(position.quantity(), Decimal::new(2, 0));
         assert_eq!(position.cost_basis(), Decimal::new(200, 0));
-        assert_eq!(position.average_price(), Decimal::new(100, 0));
+        assert_eq!(position.average_price(), Some(Decimal::new(100, 0)));
 
         position.add_lot(Lot {
             price: Decimal::new(150, 0),
@@ -95,7 +99,7 @@ mod test {
         });
         assert_eq!(position.quantity(), Decimal::new(5, 0));
         assert_eq!(position.cost_basis(), Decimal::new(650, 0));
-        assert_eq!(position.average_price(), Decimal::new(130, 0));
+        assert_eq!(position.average_price(), Some(Decimal::new(130, 0)));
 
         position.add_lot(Lot {
             price: Decimal::new(120, 0),
@@ -103,7 +107,7 @@ mod test {
         });
         assert_eq!(position.quantity(), Decimal::new(4, 0));
         assert_eq!(position.cost_basis(), Decimal::new(550, 0));
-        assert_eq!(position.average_price(), Decimal::new(1375, 1));
+        assert_eq!(position.average_price(), Some(Decimal::new(1375, 1)));
 
         position.add_lot(Lot {
             price: Decimal::new(120, 0),
@@ -111,7 +115,7 @@ mod test {
         });
         assert_eq!(position.quantity(), Decimal::new(1, 0));
         assert_eq!(position.cost_basis(), Decimal::new(150, 0));
-        assert_eq!(position.average_price(), Decimal::new(150, 0));
+        assert_eq!(position.average_price(), Some(Decimal::new(150, 0)));
 
         position.add_lot(Lot {
             price: Decimal::new(120, 0),
@@ -119,6 +123,14 @@ mod test {
         });
         assert_eq!(position.quantity(), Decimal::new(-2, 0));
         assert_eq!(position.cost_basis(), Decimal::new(-240, 0));
-        assert_eq!(position.average_price(), Decimal::new(120, 0));
+        assert_eq!(position.average_price(), Some(Decimal::new(120, 0)));
+
+        position.add_lot(Lot {
+            price: Decimal::new(80, 0),
+            quantity: Decimal::new(2, 0),
+        });
+        assert_eq!(position.quantity(), Decimal::ZERO);
+        assert_eq!(position.cost_basis(), Decimal::ZERO);
+        assert_eq!(position.average_price(), None);
     }
 }
