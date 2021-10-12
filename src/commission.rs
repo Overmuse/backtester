@@ -1,78 +1,79 @@
-use crate::order::Order;
+use crate::position::Lot;
+use rust_decimal::prelude::*;
 
 pub trait Commission {
-    fn calculate(&self, order: &Order) -> f64;
+    fn calculate(&self, lot: &Lot) -> Decimal;
 }
 
 pub struct NoCommission;
 impl Commission for NoCommission {
-    fn calculate(&self, _: &Order) -> f64 {
-        0.0
+    fn calculate(&self, _: &Lot) -> Decimal {
+        Decimal::ZERO
     }
 }
 
 pub struct PerShareCommission {
-    amount: f64,
-    min_order_cost: Option<f64>,
+    amount: Decimal,
+    min_lot_cost: Option<Decimal>,
 }
 impl PerShareCommission {
-    pub fn new(amount: f64) -> Self {
+    pub fn new(amount: Decimal) -> Self {
         Self {
             amount,
-            min_order_cost: None,
+            min_lot_cost: None,
         }
     }
 
-    pub fn min_order_cost(mut self, min_order_cost: f64) -> Self {
-        self.min_order_cost = Some(min_order_cost);
+    pub fn min_lot_cost(mut self, min_lot_cost: Decimal) -> Self {
+        self.min_lot_cost = Some(min_lot_cost);
         self
     }
 }
 impl Commission for PerShareCommission {
-    fn calculate(&self, order: &Order) -> f64 {
-        f64::max(
-            self.amount * order.shares,
-            self.min_order_cost.unwrap_or(0.0),
+    fn calculate(&self, lot: &Lot) -> Decimal {
+        Decimal::max(
+            self.amount * lot.quantity,
+            self.min_lot_cost.unwrap_or_default(),
         )
     }
 }
 
-pub struct PerOrderCommission {
-    amount: f64,
+pub struct PerLotCommission {
+    amount: Decimal,
 }
-impl PerOrderCommission {
-    pub fn new(amount: f64) -> Self {
+impl PerLotCommission {
+    pub fn new(amount: Decimal) -> Self {
         Self { amount }
     }
 }
-impl Commission for PerOrderCommission {
-    fn calculate(&self, _: &Order) -> f64 {
+impl Commission for PerLotCommission {
+    fn calculate(&self, _: &Lot) -> Decimal {
         self.amount
     }
 }
 
 pub struct PerDollarCommission {
-    amount: f64,
-    min_order_cost: Option<f64>,
+    amount: Decimal,
+    min_lot_cost: Option<Decimal>,
 }
 impl PerDollarCommission {
-    pub fn new(amount: f64) -> Self {
+    pub fn new(amount: Decimal) -> Self {
         Self {
             amount,
-            min_order_cost: None,
+            min_lot_cost: None,
         }
     }
 
-    pub fn min_order_cost(mut self, min_order_cost: f64) -> Self {
-        self.min_order_cost = Some(min_order_cost);
+    pub fn min_lot_cost(mut self, min_lot_cost: Decimal) -> Self {
+        self.min_lot_cost = Some(min_lot_cost);
         self
     }
 }
 impl Commission for PerDollarCommission {
-    fn calculate(&self, order: &Order) -> f64 {
-        f64::max(
-            self.amount * order.shares * order.price,
-            self.min_order_cost.unwrap_or(0.0),
+    fn calculate(&self, lot: &Lot) -> Decimal {
+        Decimal::max(
+            self.amount * lot.quantity * lot.price,
+            self.min_lot_cost.unwrap_or_default(),
         )
     }
 }
@@ -84,34 +85,34 @@ mod test {
     #[test]
     fn it_calculates_the_correct_commission_amount() {
         let no_commission = NoCommission;
-        let per_share_commission = PerShareCommission::new(1.0);
-        let per_order_commission = PerOrderCommission::new(2.0);
-        let per_dollar_commission = PerDollarCommission::new(3.0);
+        let per_share_commission = PerShareCommission::new(Decimal::new(1, 0));
+        let per_lot_commission = PerLotCommission::new(Decimal::new(2, 0));
+        let per_dollar_commission = PerDollarCommission::new(Decimal::new(3, 0));
 
-        let order = Order {
-            ticker: "AAPL".to_string(),
-            shares: 4.0,
-            price: 5.0,
+        let lot = Lot {
+            quantity: Decimal::new(4, 0),
+            price: Decimal::new(5, 0),
         };
 
-        assert_eq!(no_commission.calculate(&order), 0.0);
-        assert_eq!(per_share_commission.calculate(&order), 4.0);
-        assert_eq!(per_order_commission.calculate(&order), 2.0);
-        assert_eq!(per_dollar_commission.calculate(&order), 60.0);
+        assert_eq!(no_commission.calculate(&lot), Decimal::new(0, 0));
+        assert_eq!(per_share_commission.calculate(&lot), Decimal::new(4, 0));
+        assert_eq!(per_lot_commission.calculate(&lot), Decimal::new(2, 0));
+        assert_eq!(per_dollar_commission.calculate(&lot), Decimal::new(60, 0));
     }
 
     #[test]
     fn it_respects_commission_minimums() {
-        let per_share_commission = PerShareCommission::new(1.0).min_order_cost(5.0);
-        let per_dollar_commission = PerDollarCommission::new(3.0).min_order_cost(100.0);
+        let per_share_commission =
+            PerShareCommission::new(Decimal::new(1, 0)).min_lot_cost(Decimal::new(5, 0));
+        let per_dollar_commission =
+            PerDollarCommission::new(Decimal::new(3, 0)).min_lot_cost(Decimal::new(100, 0));
 
-        let order = Order {
-            ticker: "AAPL".to_string(),
-            shares: 4.0,
-            price: 5.0,
+        let lot = Lot {
+            quantity: Decimal::new(4, 0),
+            price: Decimal::new(5, 0),
         };
 
-        assert_eq!(per_share_commission.calculate(&order), 5.0);
-        assert_eq!(per_dollar_commission.calculate(&order), 100.0);
+        assert_eq!(per_share_commission.calculate(&lot), Decimal::new(5, 0));
+        assert_eq!(per_dollar_commission.calculate(&lot), Decimal::new(100, 0));
     }
 }

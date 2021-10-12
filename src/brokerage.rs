@@ -2,6 +2,7 @@ use crate::account::Account;
 use crate::commission::{Commission, NoCommission};
 //use crate::market::Market;
 use crate::slippage::{NoSlippage, Slippage};
+use rust_decimal::Decimal;
 
 pub struct Brokerage {
     account: Account,
@@ -11,7 +12,7 @@ pub struct Brokerage {
 }
 
 impl Brokerage {
-    pub fn new(cash: f64) -> Self {
+    pub fn new(cash: Decimal) -> Self {
         let account = Account::new(cash);
         Self {
             account,
