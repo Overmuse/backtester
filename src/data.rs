@@ -1,42 +1,22 @@
 use crate::context::Context;
 use async_trait::async_trait;
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
+use rust_decimal::prelude::*;
+use serde::{Deserialize, Serialize};
 use serde_json;
+use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::path::PathBuf;
 
-pub trait DataCache {
-    type Error;
-
-    fn is_cache_valid(&self, ctx: Context) -> bool;
-    fn save_prices(&self, prices: Vec<f64>) -> Result<(), Self::Error>;
-    fn load_prices(&self) -> Result<Vec<f64>, Self::Error>;
-}
-
-struct FileDataCache<P, D, S> {
-    dir: PathBuf,
-    data_provider: DataProvider<P, D, S>,
-}
-
-impl<P, D, S> DataCache for FileDataCache<P, D, S> {
-    type Error = std::io::Error;
-    fn is_cache_valid(&self, _ctx: Context) -> bool {
-        todo!()
-    }
-
-    fn save_prices(&self, prices: Vec<f64>) -> Result<(), Self::Error> {
-        let mut path = self.dir.clone();
-        path.push("prices.json");
-        let mut file = OpenOptions::new().write(true).open(path)?;
-        let bytes = serde_json::to_vec(&prices)?;
-        file.write(&bytes)?;
-        Ok(())
-    }
-
-    fn load_prices(&self) -> Result<Vec<f64>, Self::Error> {
-        todo!()
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Aggregate {
+    pub datetime: DateTime<Utc>,
+    pub open: Decimal,
+    pub high: Decimal,
+    pub low: Decimal,
+    pub close: Decimal,
+    pub volume: Decimal,
 }
 
 pub struct DataProvider<P, D, S> {
@@ -45,14 +25,30 @@ pub struct DataProvider<P, D, S> {
     split_downloader: S,
 }
 
+impl<P: PriceDownloader, D, S> DataProvider<P, D, S> {
+    pub async fn download(
+        &self,
+        tickers: Vec<String>,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> Result<HashMap<String, Vec<Aggregate>>, P::Error> {
+        let prices = self
+            .price_downloader
+            .download_prices(tickers, start, end)
+            .await?;
+        Ok(prices)
+    }
+}
+
 #[async_trait]
 pub trait PriceDownloader {
     type Error;
     async fn download_prices(
+        &self,
         tickers: Vec<String>,
         start: NaiveDate,
         end: NaiveDate,
-    ) -> Result<Vec<i32>, Self::Error>;
+    ) -> Result<HashMap<String, Vec<Aggregate>>, Self::Error>;
 }
 
 pub trait DividendDownloader {
@@ -63,33 +59,103 @@ pub trait SplitDownloader {
     fn download_splits();
 }
 
+pub trait DataCache {
+    type Error;
+
+    fn is_cache_valid(&self, ctx: Context) -> bool;
+    fn save_prices(&self, prices: HashMap<String, Vec<Aggregate>>) -> Result<(), Self::Error>;
+    fn load_prices(&self) -> Result<HashMap<String, Vec<Aggregate>>, Self::Error>;
+}
+
+struct FileDataCache<P, D, S> {
+    dir: PathBuf,
+    data_provider: DataProvider<P, D, S>,
+}
+
+enum Error {
+    Io(std::io::Error),
+    Serde(serde_json::Error),
+}
+
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        Self::Io(e)
+    }
+}
+impl From<serde_json::Error> for Error {
+    fn from(e: serde_json::Error) -> Self {
+        Self::Serde(e)
+    }
+}
+
+impl<P, D, S> DataCache for FileDataCache<P, D, S> {
+    type Error = Error;
+    fn is_cache_valid(&self, _ctx: Context) -> bool {
+        todo!()
+    }
+
+    fn save_prices(&self, prices: HashMap<String, Vec<Aggregate>>) -> Result<(), Self::Error> {
+        let mut path = self.dir.clone();
+        path.push("prices.json");
+        let mut file = OpenOptions::new().write(true).open(path)?;
+        let bytes = serde_json::to_vec(&prices)?;
+        file.write(&bytes)?;
+        Ok(())
+    }
+
+    fn load_prices(&self) -> Result<HashMap<String, Vec<Aggregate>>, Self::Error> {
+        let mut path = self.dir.clone();
+        path.push("prices.json");
+        let bytes = std::fs::read(path)?;
+        let prices = serde_json::from_slice(&bytes)?;
+        Ok(prices)
+    }
+}
+
 #[cfg(feature = "polygon")]
-mod polygon {
+pub mod polygon {
     use super::*;
     use ::polygon::{
         errors::Error,
-        rest::{Client, GetAggregate},
+        rest::{Aggregate as PolygonAggregate, AggregateWrapper, Client, GetAggregate},
     };
 
     pub struct PolygonPriceDownloader;
+
+    impl From<PolygonAggregate> for Aggregate {
+        fn from(p: PolygonAggregate) -> Aggregate {
+            Aggregate {
+                datetime: p.t,
+                open: p.o,
+                high: p.h,
+                low: p.l,
+                close: p.c,
+                volume: p.v,
+            }
+        }
+    }
+
     #[async_trait]
     impl PriceDownloader for PolygonPriceDownloader {
         type Error = Error;
         async fn download_prices(
+            &self,
             tickers: Vec<String>,
             start: NaiveDate,
             end: NaiveDate,
-        ) -> Result<Vec<i32>, Self::Error> {
+        ) -> Result<HashMap<String, Vec<Aggregate>>, Self::Error> {
             let client = Client::from_env()?;
             let queries = tickers
                 .iter()
                 .map(|ticker| GetAggregate::new(ticker, start, end));
-            client
-                .send_all(queries)
-                .await
+            let wrappers: Result<Vec<AggregateWrapper>, Self::Error> =
+                client.send_all(queries).await.into_iter().collect();
+            let data: HashMap<String, Vec<Aggregate>> = wrappers?
                 .into_iter()
-                .map(|x| x.map(|_| 0i32))
-                .collect()
+                .map(|w| (w.ticker, w.results.unwrap_or(Vec::new())))
+                .map(|(ticker, data)| (ticker, data.into_iter().map(From::from).collect()))
+                .collect();
+            Ok(data)
         }
     }
 

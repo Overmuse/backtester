@@ -3,20 +3,25 @@ use crate::commission::{Commission, NoCommission};
 //use crate::market::Market;
 use crate::slippage::{NoSlippage, Slippage};
 
-pub struct Brokerage<C: Commission, S: Slippage> {
+pub struct Brokerage {
     account: Account,
     //market: Market,
-    commission: C,
-    slippage: S,
+    commission: Box<dyn Commission>,
+    slippage: Box<dyn Slippage>,
 }
 
-impl Brokerage<NoCommission, NoSlippage> {
+impl Brokerage {
     pub fn new(cash: f64) -> Self {
         let account = Account::new(cash);
         Self {
             account,
-            commission: NoCommission,
-            slippage: NoSlippage,
+            commission: Box::new(NoCommission),
+            slippage: Box::new(NoSlippage),
         }
+    }
+
+    pub fn commission<C: 'static + Commission>(mut self, commission: C) -> Self {
+        self.commission = Box::new(commission);
+        self
     }
 }

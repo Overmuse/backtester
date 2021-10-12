@@ -31,3 +31,27 @@ impl Account {
         self.positions.clear()
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn it_can_be_initialized() {
+        let account = Account::new(100.0);
+        assert!(account.active_orders.is_empty());
+        assert!(account.inactive_orders.is_empty());
+        assert!(account.positions.is_empty());
+        assert_eq!(account.cash, 100.0);
+        assert_eq!(account.equity, 100.0);
+        assert_eq!(account.starting_cash, 100.0);
+    }
+
+    #[test]
+    fn it_can_be_reset() {
+        let mut account = Account::new(100.0);
+        account.cash = 200.0;
+        account.reset();
+        assert_eq!(account.cash, 100.0);
+    }
+}

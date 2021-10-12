@@ -39,10 +39,26 @@ impl VolumeShareSlippage {
 }
 impl Slippage for VolumeShareSlippage {
     fn slippage(&self, volume_share: f64) -> f64 {
-        if let Some(max_volume) = self.max_volume {
-            todo!()
+        if let Some(_max_volume) = self.max_volume {
+            todo!("Implement max volume for VolumeShareSlippage")
         } else {
             self.price_impact * volume_share.powi(2)
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn it_calculates_the_correct_slippage_amount() {
+        let no_slippage = NoSlippage;
+        let fixed_slippage = FixedSlippage::new(1.0);
+        let volume_share_slippage = VolumeShareSlippage::new(2.0, None);
+
+        assert_eq!(no_slippage.slippage(0.5), 0.0);
+        assert_eq!(fixed_slippage.slippage(0.5), 1.0);
+        assert_eq!(volume_share_slippage.slippage(0.5), 0.5);
     }
 }
