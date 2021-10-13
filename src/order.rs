@@ -8,6 +8,7 @@ pub enum OrderType {
     StopLimit(Decimal, Decimal),
 }
 
+#[derive(Debug, Clone)]
 pub struct Order {
     pub ticker: String,
     pub shares: Decimal,

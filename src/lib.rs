@@ -1,12 +1,8 @@
 pub mod account;
 pub mod brokerage;
-pub mod clock;
-pub mod commission;
-pub mod context;
-pub mod data;
-pub mod market;
+pub mod finance;
+pub mod markets;
 pub mod order;
 pub mod position;
 pub mod simulator;
-pub mod slippage;
 pub mod strategy;

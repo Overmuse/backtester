@@ -1,3 +1,5 @@
+use crate::brokerage::Brokerage;
+use crate::markets::market::Market;
 use crate::order::Order;
 use chrono::NaiveDate;
 
@@ -17,15 +19,33 @@ impl Context {
     }
 }
 
-pub struct Data;
-
 pub trait Strategy {
     type Error;
 
     fn initialize(&mut self);
-    fn before_open(&mut self, ctx: &Context) -> Result<Vec<Order>, Self::Error>;
-    fn at_open(&mut self, data: &Data, ctx: &Context) -> Result<Vec<Order>, Self::Error>;
-    fn on_data(&mut self, data: &Data, ctx: &Context) -> Result<Vec<Order>, Self::Error>;
-    fn at_close(&mut self, data: &Data, ctx: &Context) -> Result<Vec<Order>, Self::Error>;
-    fn after_close(&mut self, data: &Data, ctx: &Context) -> Result<Vec<Order>, Self::Error>;
+    fn before_open(
+        &mut self,
+        brokerage: &mut Brokerage,
+        market: &Market,
+    ) -> Result<Vec<Order>, Self::Error>;
+    fn at_open(
+        &mut self,
+        brokerage: &mut Brokerage,
+        market: &Market,
+    ) -> Result<Vec<Order>, Self::Error>;
+    fn on_data(
+        &mut self,
+        brokerage: &mut Brokerage,
+        market: &Market,
+    ) -> Result<Vec<Order>, Self::Error>;
+    fn at_close(
+        &mut self,
+        brokerage: &mut Brokerage,
+        market: &Market,
+    ) -> Result<Vec<Order>, Self::Error>;
+    fn after_close(
+        &mut self,
+        brokerage: &mut Brokerage,
+        market: &Market,
+    ) -> Result<Vec<Order>, Self::Error>;
 }

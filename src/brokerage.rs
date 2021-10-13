@@ -1,7 +1,10 @@
 use crate::account::Account;
-use crate::commission::{Commission, NoCommission};
+use crate::finance::{
+    commission::{Commission, NoCommission},
+    slippage::{NoSlippage, Slippage},
+};
+use crate::order::Order;
 //use crate::market::Market;
-use crate::slippage::{NoSlippage, Slippage};
 use rust_decimal::Decimal;
 
 pub struct Brokerage {
@@ -9,6 +12,20 @@ pub struct Brokerage {
     //market: Market,
     commission: Box<dyn Commission>,
     slippage: Box<dyn Slippage>,
+}
+
+#[derive(Debug)]
+pub enum OrderStatus {
+    Submitted,
+    Cancelled,
+    Filled,
+    PartiallyFilled,
+}
+
+#[derive(Debug)]
+pub struct BrokerageOrder {
+    status: OrderStatus,
+    order: Order,
 }
 
 impl Brokerage {
@@ -24,5 +41,9 @@ impl Brokerage {
     pub fn commission<C: 'static + Commission>(mut self, commission: C) -> Self {
         self.commission = Box::new(commission);
         self
+    }
+
+    pub fn send_order(&mut self, _: Order) {
+        todo!()
     }
 }

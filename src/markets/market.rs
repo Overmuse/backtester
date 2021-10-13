@@ -1,7 +1,8 @@
-use crate::clock::{Clock, MarketState};
-use crate::data::MarketData;
+use super::clock::{Clock, MarketState};
+use super::data::MarketData;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
+use std::collections::BTreeSet;
 //pub enum Resolution {
 //    Minute,
 //    Day,
@@ -16,10 +17,11 @@ pub struct Market {
 impl Market {
     pub fn new(
         //resolution: Resolution,
-        timestamps: Vec<DateTime<Utc>>,
         data: MarketData,
     ) -> Self {
-        let clock = Clock::new(timestamps);
+        let timestamps: BTreeSet<DateTime<Utc>> =
+            data.prices.values().flatten().map(|x| *x.0).collect();
+        let clock = Clock::new(timestamps.into_iter().collect());
         Self {
             //resolution,
             clock,
@@ -41,6 +43,10 @@ impl Market {
                 timeseries.get(self.clock.datetime()?).map(|agg| agg.close)
             }
         }
+    }
+
+    pub fn state(&self) -> MarketState {
+        self.clock.state()
     }
 
     pub fn tick(&mut self) {

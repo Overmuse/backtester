@@ -1,4 +1,3 @@
-use crate::context::Context;
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::prelude::*;
@@ -95,7 +94,7 @@ pub trait SplitDownloader {
 }
 
 pub trait DataCache {
-    fn is_cache_valid(&self, ctx: Context) -> bool;
+    fn is_cache_valid(&self) -> bool;
     fn save_prices(&self, prices: HashMap<String, Vec<Aggregate>>) -> Result<(), Error>;
     fn load_prices(&self) -> Result<HashMap<String, Vec<Aggregate>>, Error>;
 }
@@ -106,7 +105,7 @@ struct FileDataCache {
 }
 
 impl DataCache for FileDataCache {
-    fn is_cache_valid(&self, _ctx: Context) -> bool {
+    fn is_cache_valid(&self) -> bool {
         todo!()
     }
 
