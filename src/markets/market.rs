@@ -1,5 +1,5 @@
 use super::clock::{Clock, MarketState};
-use super::data::MarketData;
+use crate::data::MarketData;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use std::collections::BTreeSet;

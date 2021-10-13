@@ -1,5 +1,6 @@
 pub mod account;
 pub mod brokerage;
+pub mod data;
 pub mod finance;
 pub mod markets;
 pub mod order;
