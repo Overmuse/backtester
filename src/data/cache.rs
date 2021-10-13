@@ -12,6 +12,16 @@ pub trait DataCache {
     async fn load_data(&self, meta: &Meta) -> Result<MarketData, Error>;
 }
 
+pub trait FileCache {
+    fn file_cache<T: Into<PathBuf>>(self, dir: T) -> FileDataCache;
+}
+
+impl<T: DataProvider + Send + Sync + 'static> FileCache for T {
+    fn file_cache<T2: Into<PathBuf>>(self, dir: T2) -> FileDataCache {
+        FileDataCache::new(Box::new(self), dir.into())
+    }
+}
+
 #[async_trait]
 impl<T> DataProvider for T
 where
@@ -70,7 +80,7 @@ impl DataCache for FileDataCache {
     fn save_data(&self, data: &MarketData) -> Result<(), Error> {
         let mut path = self.dir.clone();
         path.push("data.json");
-        let mut file = OpenOptions::new().write(true).open(path)?;
+        let mut file = OpenOptions::new().create(true).write(true).open(path)?;
         let bytes = serde_json::to_vec(&data)?;
         file.write_all(&bytes)?;
         Ok(())
@@ -81,12 +91,23 @@ impl DataCache for FileDataCache {
             let mut path = self.dir.clone();
             path.push("data.json");
             let bytes = std::fs::read(path)?;
-            let prices = serde_json::from_slice(&bytes)?;
-            Ok(prices)
+            let mut data: MarketData = serde_json::from_slice(&bytes)?;
+            data.prices
+                .retain(|ticker, _| meta.tickers.contains(ticker));
+            data.prices.values_mut().for_each(|timeseries| {
+                timeseries.retain(|dt, _| {
+                    dt.naive_utc().date() > meta.start && dt.naive_utc().date() <= meta.end
+                })
+            });
+            Ok(data)
         } else {
             let mut meta_path = self.dir.clone();
+            std::fs::create_dir_all(meta_path.clone())?;
             meta_path.push("meta.json");
-            let mut file = OpenOptions::new().write(true).open(meta_path)?;
+            let mut file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(meta_path)?;
             let bytes = serde_json::to_vec(meta)?;
             file.write_all(&bytes)?;
             let data = self.data_provider().download_data(meta).await?;
