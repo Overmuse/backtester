@@ -1,6 +1,7 @@
 use anyhow::Result;
-use backtester::data::Meta;
-use backtester::data::{cache::FileCache, downloader::polygon::PolygonDownloader, DataProvider};
+use backtester::data::{
+    downloader::polygon::PolygonDownloader, DataOptions, DataProvider, FileCache,
+};
 use backtester::markets::market::Market;
 use chrono::NaiveDate;
 use dotenv::dotenv;
@@ -10,7 +11,7 @@ async fn main() -> Result<()> {
     let _ = dotenv();
     let downloader = PolygonDownloader.file_cache("data");
     let tickers = vec!["AAPL".to_string(), "TSLA".to_string()];
-    let meta = Meta::new(
+    let meta = DataOptions::new(
         tickers,
         NaiveDate::from_ymd(2015, 1, 1),
         NaiveDate::from_ymd(2021, 10, 1),

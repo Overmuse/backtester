@@ -1,4 +1,4 @@
-use super::{DataProvider, Error, MarketData, Meta};
+use super::{DataOptions, DataProvider, Error, MarketData};
 use async_trait::async_trait;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
@@ -6,19 +6,26 @@ use std::path::PathBuf;
 
 #[async_trait]
 pub trait DataCache {
-    fn data_provider(&self) -> &Box<dyn DataProvider + Sync + Send>;
-    fn is_cache_valid(&self, meta: &Meta) -> bool;
+    type DataProvider;
+
+    fn data_provider(&self) -> &Self::DataProvider;
+    fn is_cache_valid(&self, meta: &DataOptions) -> bool;
     fn save_data(&self, data: &MarketData) -> Result<(), Error>;
-    async fn load_data(&self, meta: &Meta) -> Result<MarketData, Error>;
+    async fn load_data(&self, meta: &DataOptions) -> Result<MarketData, Error>;
 }
 
 pub trait FileCache {
-    fn file_cache<T: Into<PathBuf>>(self, dir: T) -> FileDataCache;
+    fn file_cache<T: Into<PathBuf>>(self, dir: T) -> FileDataCache<Self>
+    where
+        Self: Sized;
 }
 
 impl<T: DataProvider + Send + Sync + 'static> FileCache for T {
-    fn file_cache<T2: Into<PathBuf>>(self, dir: T2) -> FileDataCache {
-        FileDataCache::new(Box::new(self), dir.into())
+    fn file_cache<T2: Into<PathBuf>>(self, dir: T2) -> FileDataCache<Self>
+    where
+        Self: Sized,
+    {
+        FileDataCache::new(self, dir.into())
     }
 }
 
@@ -27,18 +34,18 @@ impl<T> DataProvider for T
 where
     T: DataCache + Sync + Send,
 {
-    async fn download_data(&self, meta: &Meta) -> Result<MarketData, Error> {
+    async fn download_data(&self, meta: &DataOptions) -> Result<MarketData, Error> {
         self.load_data(meta).await
     }
 }
 
-pub struct FileDataCache {
+pub struct FileDataCache<D> {
     dir: PathBuf,
-    data_provider: Box<dyn DataProvider + Sync + Send>,
+    data_provider: D,
 }
 
-impl FileDataCache {
-    pub fn new<T>(data_provider: Box<dyn DataProvider + Sync + Send>, dir: T) -> Self
+impl<D> FileDataCache<D> {
+    pub fn new<T>(data_provider: D, dir: T) -> Self
     where
         T: Into<PathBuf>,
     {
@@ -50,18 +57,19 @@ impl FileDataCache {
 }
 
 #[async_trait]
-impl DataCache for FileDataCache {
-    fn data_provider(&self) -> &Box<dyn DataProvider + Sync + Send> {
+impl<T: DataProvider + Send + Sync> DataCache for FileDataCache<T> {
+    type DataProvider = T;
+    fn data_provider(&self) -> &T {
         &self.data_provider
     }
 
-    fn is_cache_valid(&self, meta: &Meta) -> bool {
+    fn is_cache_valid(&self, meta: &DataOptions) -> bool {
         let mut path = self.dir.clone();
         path.push("meta.json");
         if path.exists() {
             let bytes = std::fs::read(path);
             if let Ok(bytes) = bytes {
-                let cached_meta = serde_json::from_slice::<Meta>(&bytes);
+                let cached_meta = serde_json::from_slice::<DataOptions>(&bytes);
                 if let Ok(cached_meta) = cached_meta {
                     let ticker_check = meta
                         .tickers
@@ -86,7 +94,7 @@ impl DataCache for FileDataCache {
         Ok(())
     }
 
-    async fn load_data(&self, meta: &Meta) -> Result<MarketData, Error> {
+    async fn load_data(&self, meta: &DataOptions) -> Result<MarketData, Error> {
         if self.is_cache_valid(meta) {
             let mut path = self.dir.clone();
             path.push("data.json");

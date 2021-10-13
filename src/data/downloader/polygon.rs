@@ -1,4 +1,4 @@
-use crate::data::{Aggregate, DataProvider, Error, MarketData, Meta, PriceData};
+use crate::data::{Aggregate, DataOptions, DataProvider, Error, MarketData, PriceData};
 use ::polygon::rest::{Aggregate as PolygonAggregate, AggregateWrapper, Client, GetAggregate};
 use async_trait::async_trait;
 
@@ -19,7 +19,7 @@ impl From<PolygonAggregate> for Aggregate {
 
 #[async_trait]
 impl DataProvider for PolygonDownloader {
-    async fn download_data(&self, meta: &Meta) -> Result<MarketData, Error> {
+    async fn download_data(&self, meta: &DataOptions) -> Result<MarketData, Error> {
         let client = Client::from_env()?;
         let queries = meta
             .tickers

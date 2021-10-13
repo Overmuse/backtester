@@ -4,19 +4,20 @@ use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
-use error::Error;
+pub use cache::FileCache;
+pub use error::Error;
 pub mod cache;
 pub mod downloader;
 pub mod error;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct Meta {
+pub struct DataOptions {
     tickers: Vec<String>,
     start: NaiveDate,
     end: NaiveDate,
 }
 
-impl Meta {
+impl DataOptions {
     pub fn new(tickers: Vec<String>, start: NaiveDate, end: NaiveDate) -> Self {
         Self {
             tickers,
@@ -45,5 +46,5 @@ pub struct MarketData {
 
 #[async_trait]
 pub trait DataProvider {
-    async fn download_data(&self, meta: &Meta) -> Result<MarketData, Error>;
+    async fn download_data(&self, meta: &DataOptions) -> Result<MarketData, Error>;
 }
