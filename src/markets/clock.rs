@@ -22,7 +22,7 @@ impl MarketState {
 }
 
 #[derive(Clone)]
-pub struct Clock {
+pub(crate) struct Clock {
     idx: usize,
     market_state: MarketState,
     timestamps: Vec<DateTime<Utc>>,

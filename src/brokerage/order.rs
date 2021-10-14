@@ -16,9 +16,9 @@ pub struct Order {
 }
 
 impl Order {
-    pub fn new(ticker: String, shares: Decimal) -> Self {
+    pub fn new<T: ToString>(ticker: T, shares: Decimal) -> Self {
         Self {
-            ticker,
+            ticker: ticker.to_string(),
             shares,
             order_type: OrderType::Market,
         }

@@ -19,7 +19,7 @@ impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{: >5}: {} @ {}",
+            "{: >5}: {: >7} @ {}",
             self.ticker,
             self.quantity(),
             self.average_price().unwrap_or(Decimal::ZERO)

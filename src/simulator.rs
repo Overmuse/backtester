@@ -9,7 +9,8 @@ pub struct Simulator<S: Strategy> {
 }
 
 impl<S: Strategy> Simulator<S> {
-    pub fn new(brokerage: Brokerage, market: Market, strategy: S) -> Self {
+    pub fn new(brokerage: Brokerage, strategy: S) -> Self {
+        let market = brokerage.get_market();
         Self {
             brokerage,
             market,

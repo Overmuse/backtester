@@ -74,4 +74,8 @@ impl Brokerage {
             order,
         }
     }
+
+    pub(crate) fn get_market(&self) -> Market {
+        self.market.clone()
+    }
 }

@@ -2,5 +2,10 @@ pub mod brokerage;
 pub mod data;
 pub mod finance;
 pub mod markets;
-pub mod simulator;
-pub mod strategy;
+mod simulator;
+mod strategy;
+
+pub use brokerage::Brokerage;
+pub use markets::Market;
+pub use simulator::Simulator;
+pub use strategy::Strategy;

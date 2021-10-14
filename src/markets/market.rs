@@ -52,6 +52,10 @@ impl Market {
         }
     }
 
+    pub fn datetime(&self) -> Option<DateTime<Utc>> {
+        self.inner.borrow().clock.datetime().copied()
+    }
+
     pub fn state(&self) -> MarketState {
         self.inner.borrow().clock.state()
     }
@@ -60,7 +64,7 @@ impl Market {
         self.inner.borrow().clock.is_done()
     }
 
-    pub fn tick(&self) {
+    pub(crate) fn tick(&self) {
         self.inner.borrow_mut().clock.tick()
     }
 }
