@@ -6,21 +6,27 @@ use crate::markets::market::Market;
 use account::Account;
 use order::Order;
 use position::{Lot, Position};
-//use crate::market::Market;
 use rust_decimal::Decimal;
+use std::sync::mpsc::{channel, Receiver, Sender};
 
 pub mod account;
 pub mod order;
 pub mod position;
+
+#[derive(Clone, Debug)]
+pub enum Event {
+    OrderUpdate { status: OrderStatus, order: Order },
+}
 
 pub struct Brokerage {
     account: Account,
     market: Market,
     commission: Box<dyn Commission>,
     slippage: Box<dyn Slippage>,
+    listeners: Vec<Sender<Event>>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum OrderStatus {
     Submitted,
     Cancelled,
@@ -42,6 +48,7 @@ impl Brokerage {
             market,
             commission: Box::new(NoCommission),
             slippage: Box::new(NoSlippage),
+            listeners: Vec::new(),
         }
     }
 
@@ -63,7 +70,7 @@ impl Brokerage {
         self
     }
 
-    pub fn send_order(&mut self, order: Order) -> BrokerageOrder {
+    pub fn send_order(&mut self, order: Order) {
         if self.market.is_open() {
             let current_price = self.market.get_last_price(&order.ticker);
             if let Some(price) = current_price {
@@ -73,17 +80,34 @@ impl Brokerage {
                         quantity: order.shares,
                     };
                     self.account.add_lot(order.ticker.clone(), lot);
-                    return BrokerageOrder {
+                    let event = Event::OrderUpdate {
                         status: OrderStatus::Filled,
                         order,
                     };
+                    self.report_event(&event);
+                    return;
                 }
             }
         }
-        BrokerageOrder {
+        let event = Event::OrderUpdate {
             status: OrderStatus::Submitted,
             order,
+        };
+        self.report_event(&event);
+    }
+
+    fn report_event(&self, event: &Event) {
+        for listener in self.listeners.iter() {
+            listener
+                .send(event.clone())
+                .expect("Failed to report event");
         }
+    }
+
+    pub fn subscribe(&mut self) -> Receiver<Event> {
+        let (tx, rx) = channel();
+        self.listeners.push(tx);
+        rx
     }
 
     pub(crate) fn get_market(&self) -> Market {

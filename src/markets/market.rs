@@ -5,10 +5,6 @@ use rust_decimal::Decimal;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::rc::Rc;
-//pub enum Resolution {
-//    Minute,
-//    Day,
-//}
 
 struct Inner {
     clock: Clock,
@@ -17,15 +13,11 @@ struct Inner {
 
 #[derive(Clone)]
 pub struct Market {
-    //resolution: Resolution,
     inner: Rc<RefCell<Inner>>,
 }
 
 impl Market {
-    pub fn new(
-        //resolution: Resolution,
-        data: MarketData,
-    ) -> Self {
+    pub fn new(data: MarketData) -> Self {
         let timestamps: BTreeSet<DateTime<Utc>> =
             data.prices.values().flatten().map(|x| *x.0).collect();
         let clock = Clock::new(timestamps.into_iter().collect());

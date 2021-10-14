@@ -1,4 +1,4 @@
-use crate::brokerage::{Brokerage, BrokerageOrder};
+use crate::brokerage::Brokerage;
 use crate::markets::market::Market;
 
 pub trait Strategy {
@@ -31,8 +31,5 @@ pub trait Strategy {
         _market: &Market,
     ) -> Result<(), Self::Error> {
         Ok(())
-    }
-    fn on_order_update(&mut self, order_message: &BrokerageOrder) {
-        println!("{:?}", order_message);
     }
 }

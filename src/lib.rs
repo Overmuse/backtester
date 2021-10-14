@@ -4,6 +4,7 @@ pub mod finance;
 mod markets;
 pub mod prelude;
 mod simulator;
+pub mod statistics;
 mod strategy;
 
 pub use brokerage::{
