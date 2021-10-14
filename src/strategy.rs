@@ -1,5 +1,5 @@
 use crate::brokerage::{Brokerage, BrokerageOrder};
-use crate::Market;
+use crate::markets::market::Market;
 
 pub trait Strategy {
     type Error;

@@ -1,8 +1,6 @@
 use anyhow::Result;
-use backtester::data::{
-    downloader::polygon::PolygonDownloader, DataOptions, DataProvider, FileCache,
-};
-use backtester::{Brokerage, Market, Order, Simulator, Strategy};
+use backtester::data::downloader::polygon::PolygonDownloader;
+use backtester::prelude::*;
 use chrono::NaiveDate;
 use dotenv::dotenv;
 use rust_decimal::Decimal;
