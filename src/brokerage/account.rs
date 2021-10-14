@@ -29,7 +29,7 @@ impl Account {
         self.positions
             .entry(ticker.clone())
             .and_modify(|pos| pos.add_lot(lot.clone()))
-            .or_insert(Position::new(ticker, lot));
+            .or_insert_with(|| Position::new(ticker, lot));
     }
 
     pub fn reset(&mut self) {

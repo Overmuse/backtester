@@ -1,9 +1,8 @@
 use anyhow::Result;
-use backtester::brokerage::order::Order;
 use backtester::data::{
     downloader::polygon::PolygonDownloader, DataOptions, DataProvider, FileCache,
 };
-use backtester::{Brokerage, Market, Simulator, Strategy};
+use backtester::{Brokerage, Market, Order, Simulator, Strategy};
 use chrono::NaiveDate;
 use dotenv::dotenv;
 use rust_decimal::Decimal;
@@ -16,16 +15,13 @@ impl Strategy for Strat {
     fn at_open(&mut self, brokerage: &mut Brokerage, market: &Market) -> Result<(), Self::Error> {
         let e = market.get_last_price("E");
         let m = market.get_last_price("M");
-        match (e, m) {
-            (Some(e), Some(m)) => {
-                let order = if e > m {
-                    Order::new("E", Decimal::ONE)
-                } else {
-                    Order::new("M", Decimal::ONE)
-                };
-                brokerage.send_order(order);
-            }
-            _ => (),
+        if let (Some(e), Some(m)) = (e, m) {
+            let order = if e > m {
+                Order::new("E", Decimal::ONE)
+            } else {
+                Order::new("M", Decimal::ONE)
+            };
+            brokerage.send_order(order);
         }
         let positions = brokerage.get_positions();
         println!("{}", market.datetime().unwrap());

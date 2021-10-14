@@ -1,4 +1,4 @@
-use crate::brokerage::brokerage::{Brokerage, BrokerageOrder};
+use crate::brokerage::{Brokerage, BrokerageOrder};
 use crate::Market;
 
 pub trait Strategy {

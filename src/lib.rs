@@ -1,11 +1,14 @@
-pub mod brokerage;
+mod brokerage;
 pub mod data;
 pub mod finance;
-pub mod markets;
+mod markets;
 mod simulator;
 mod strategy;
 
-pub use brokerage::Brokerage;
-pub use markets::Market;
+pub use brokerage::{
+    order::{Order, OrderType},
+    Brokerage, OrderStatus,
+};
+pub use markets::market::Market;
 pub use simulator::Simulator;
 pub use strategy::Strategy;

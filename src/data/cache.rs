@@ -1,4 +1,4 @@
-use super::{DataOptions, DataProvider, Error, MarketData};
+use super::{error::Error, DataOptions, DataProvider, MarketData};
 use async_trait::async_trait;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
@@ -95,8 +95,8 @@ impl<T: DataProvider + Send + Sync> DataCache for FileDataCache<T> {
     }
 
     async fn load_data(&self, meta: &DataOptions) -> Result<MarketData, Error> {
+        let mut path = self.dir.clone();
         if self.is_cache_valid(meta) {
-            let mut path = self.dir.clone();
             path.push("data.json");
             let bytes = std::fs::read(path)?;
             let mut data: MarketData = serde_json::from_slice(&bytes)?;
@@ -109,13 +109,9 @@ impl<T: DataProvider + Send + Sync> DataCache for FileDataCache<T> {
             });
             Ok(data)
         } else {
-            let mut meta_path = self.dir.clone();
-            std::fs::create_dir_all(meta_path.clone())?;
-            meta_path.push("meta.json");
-            let mut file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .open(meta_path)?;
+            std::fs::create_dir_all(path.clone())?;
+            path.push("meta.json");
+            let mut file = OpenOptions::new().create(true).write(true).open(path)?;
             let bytes = serde_json::to_vec(meta)?;
             file.write_all(&bytes)?;
             let data = self.data_provider().download_data(meta).await?;

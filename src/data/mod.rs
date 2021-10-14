@@ -5,8 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
 pub use cache::FileCache;
-pub use error::Error;
-pub mod cache;
+mod cache;
 pub mod downloader;
 pub mod error;
 
@@ -46,5 +45,5 @@ pub struct MarketData {
 
 #[async_trait]
 pub trait DataProvider {
-    async fn download_data(&self, meta: &DataOptions) -> Result<MarketData, Error>;
+    async fn download_data(&self, meta: &DataOptions) -> Result<MarketData, error::Error>;
 }

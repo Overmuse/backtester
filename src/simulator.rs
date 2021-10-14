@@ -1,4 +1,4 @@
-use crate::brokerage::brokerage::Brokerage;
+use crate::brokerage::Brokerage;
 use crate::markets::{clock::MarketState, market::Market};
 use crate::strategy::Strategy;
 

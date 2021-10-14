@@ -64,6 +64,10 @@ impl Market {
         self.inner.borrow().clock.is_done()
     }
 
+    pub fn is_open(&self) -> bool {
+        self.inner.borrow().clock.is_open()
+    }
+
     pub(crate) fn tick(&self) {
         self.inner.borrow_mut().clock.tick()
     }

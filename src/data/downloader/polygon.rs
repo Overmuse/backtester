@@ -1,4 +1,4 @@
-use crate::data::{Aggregate, DataOptions, DataProvider, Error, MarketData, PriceData};
+use crate::data::{error::Error, Aggregate, DataOptions, DataProvider, MarketData, PriceData};
 use ::polygon::rest::{Aggregate as PolygonAggregate, AggregateWrapper, Client, GetAggregate};
 use async_trait::async_trait;
 

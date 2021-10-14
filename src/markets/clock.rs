@@ -82,7 +82,6 @@ impl Clock {
         } else {
             let state = &self.market_state;
             if let MarketState::Closed = state {
-                return;
             } else {
                 self.market_state = state.next();
             }
