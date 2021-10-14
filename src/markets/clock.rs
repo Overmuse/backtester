@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum MarketState {
     PreOpen,
     Opening,
@@ -21,6 +21,7 @@ impl MarketState {
     }
 }
 
+#[derive(Clone)]
 pub struct Clock {
     idx: usize,
     market_state: MarketState,
@@ -44,12 +45,12 @@ impl Clock {
         self.timestamps.get(self.idx + 1)
     }
 
-    fn set_idx(&mut self, idx: usize) {
-        self.idx = idx
-    }
-
     pub fn state(&self) -> MarketState {
         self.market_state
+    }
+
+    pub fn is_done(&self) -> bool {
+        (self.idx == (self.timestamps.len() - 1)) && self.state() == MarketState::Closed
     }
 
     pub fn is_open(&self) -> bool {
@@ -78,6 +79,48 @@ impl Clock {
                     _ => self.idx += 1,
                 }
             }
+        } else {
+            let state = &self.market_state;
+            if let MarketState::Closed = state {
+                return;
+            } else {
+                self.market_state = state.next();
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn it_can_tell_and_update_time() {
+        let mut clock = Clock::new(vec![Utc::now(), Utc::now() + chrono::Duration::days(1)]);
+        assert!(clock.datetime().is_some());
+        assert!(clock.next_datetime().is_some());
+
+        assert_eq!(clock.state(), MarketState::PreOpen);
+        assert!(!clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::Opening);
+        assert!(clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::Open);
+        assert!(clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::Closing);
+        assert!(clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::Closed);
+        assert!(!clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::PreOpen);
+        assert!(clock.next_datetime().is_none());
     }
 }

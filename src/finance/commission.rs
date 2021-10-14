@@ -1,4 +1,4 @@
-use crate::position::Lot;
+use crate::brokerage::position::Lot;
 use rust_decimal::prelude::*;
 
 pub trait Commission {

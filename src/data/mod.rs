@@ -39,7 +39,7 @@ pub struct Aggregate {
 
 type PriceData = HashMap<String, BTreeMap<DateTime<Utc>, Aggregate>>;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MarketData {
     pub prices: PriceData,
 }

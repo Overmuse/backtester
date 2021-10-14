@@ -1,6 +1,7 @@
 use num_traits::Signed;
 use rust_decimal::prelude::*;
 use std::collections::VecDeque;
+use std::fmt;
 
 #[derive(Clone, Debug)]
 pub struct Lot {
@@ -12,6 +13,18 @@ pub struct Lot {
 pub struct Position {
     pub ticker: String,
     lots: VecDeque<Lot>,
+}
+
+impl fmt::Display for Position {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{: >5}: {} @ {}",
+            self.ticker,
+            self.quantity(),
+            self.average_price().unwrap_or(Decimal::ZERO)
+        )
+    }
 }
 
 impl Position {
@@ -71,7 +84,7 @@ impl Position {
         if qty.is_zero() {
             None
         } else {
-            Some(self.cost_basis() / qty)
+            Some((self.cost_basis() / qty).round_dp(8))
         }
     }
 }

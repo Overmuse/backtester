@@ -1,19 +1,28 @@
-use crate::brokerage::Brokerage;
+use crate::brokerage::brokerage::Brokerage;
 use crate::markets::{clock::MarketState, market::Market};
 use crate::strategy::Strategy;
 
-struct Simulator<S: Strategy> {
+pub struct Simulator<S: Strategy> {
     brokerage: Brokerage,
     market: Market,
     strategy: S,
 }
 
 impl<S: Strategy> Simulator<S> {
-    fn run(&mut self) -> Result<(), S::Error> {
+    pub fn new(brokerage: Brokerage, market: Market, strategy: S) -> Self {
+        Self {
+            brokerage,
+            market,
+            strategy,
+        }
+    }
+}
+
+impl<S: Strategy> Simulator<S> {
+    pub fn run(&mut self) -> Result<(), S::Error> {
         self.strategy.initialize();
-        //while self.market.should_run() {
-        loop {
-            let orders = match self.market.state() {
+        while !self.market.is_done() {
+            match self.market.state() {
                 MarketState::PreOpen => {
                     self.strategy.before_open(&mut self.brokerage, &self.market)
                 }
@@ -22,9 +31,6 @@ impl<S: Strategy> Simulator<S> {
                 MarketState::Closing => self.strategy.at_close(&mut self.brokerage, &self.market),
                 MarketState::Closed => self.strategy.after_close(&mut self.brokerage, &self.market),
             }?;
-            for order in orders {
-                self.brokerage.send_order(order)
-            }
             self.market.tick();
         }
         Ok(())

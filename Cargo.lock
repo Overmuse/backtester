@@ -632,6 +632,7 @@ dependencies = [
  "backtester",
  "chrono",
  "dotenv",
+ "rust_decimal",
  "tokio",
 ]
 
