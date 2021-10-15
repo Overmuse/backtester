@@ -1,4 +1,5 @@
 use rust_decimal::Decimal;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OrderType {
@@ -8,8 +9,9 @@ pub enum OrderType {
     StopLimit(Decimal, Decimal),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Order {
+    pub id: Uuid,
     pub ticker: String,
     pub shares: Decimal,
     pub order_type: OrderType,
@@ -18,6 +20,7 @@ pub struct Order {
 impl Order {
     pub fn new<T: ToString>(ticker: T, shares: Decimal) -> Self {
         Self {
+            id: Uuid::new_v4(),
             ticker: ticker.to_string(),
             shares,
             order_type: OrderType::Market,
@@ -46,7 +49,7 @@ impl Order {
         self
     }
 
-    pub fn is_marketable(&self, price: Decimal) -> bool {
+    pub(crate) fn is_marketable(&self, price: Decimal) -> bool {
         match self.order_type {
             OrderType::Market => true,
             OrderType::Limit(limit_price) => {

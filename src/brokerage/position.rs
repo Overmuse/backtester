@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use num_traits::Signed;
 use rust_decimal::prelude::*;
 use std::collections::VecDeque;
@@ -5,6 +6,7 @@ use std::fmt;
 
 #[derive(Clone, Debug)]
 pub struct Lot {
+    pub fill_time: DateTime<Utc>,
     pub price: Decimal,
     pub quantity: Decimal,
 }
@@ -57,8 +59,8 @@ impl Position {
                     None => {
                         // No more lots left, so now we want to push remaining qty onto lots
                         self.lots.push_back(Lot {
-                            price: new_lot.price,
                             quantity: unaccounted,
+                            ..new_lot
                         });
                         unaccounted = Decimal::ZERO;
                     }
@@ -107,6 +109,7 @@ mod test {
         let mut position = Position::new(
             "AAPL".to_string(),
             Lot {
+                fill_time: Utc::now(),
                 price,
                 quantity: Decimal::new(2, 0),
             },
@@ -119,6 +122,7 @@ mod test {
 
         price = Decimal::new(150, 0);
         position.add_lot(Lot {
+            fill_time: Utc::now(),
             price,
             quantity: Decimal::new(3, 0),
         });
@@ -130,6 +134,7 @@ mod test {
 
         price = Decimal::new(120, 0);
         position.add_lot(Lot {
+            fill_time: Utc::now(),
             price,
             quantity: Decimal::new(-1, 0),
         });
@@ -140,6 +145,7 @@ mod test {
         assert_eq!(position.unrealized_profit(price), Decimal::new(-70, 0));
 
         position.add_lot(Lot {
+            fill_time: Utc::now(),
             price,
             quantity: Decimal::new(-3, 0),
         });
@@ -150,6 +156,7 @@ mod test {
         assert_eq!(position.unrealized_profit(price), Decimal::new(-30, 0));
 
         position.add_lot(Lot {
+            fill_time: Utc::now(),
             price,
             quantity: Decimal::new(-3, 0),
         });
@@ -161,6 +168,7 @@ mod test {
 
         price = Decimal::new(80, 0);
         position.add_lot(Lot {
+            fill_time: Utc::now(),
             price,
             quantity: Decimal::new(2, 0),
         });

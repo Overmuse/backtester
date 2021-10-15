@@ -81,6 +81,7 @@ impl Commission for PerDollarCommission {
 #[cfg(test)]
 mod test {
     use super::*;
+    use chrono::Utc;
 
     #[test]
     fn it_calculates_the_correct_commission_amount() {
@@ -90,6 +91,7 @@ mod test {
         let per_dollar_commission = PerDollarCommission::new(Decimal::new(3, 0));
 
         let lot = Lot {
+            fill_time: Utc::now(),
             quantity: Decimal::new(4, 0),
             price: Decimal::new(5, 0),
         };
@@ -108,6 +110,7 @@ mod test {
             PerDollarCommission::new(Decimal::new(3, 0)).min_lot_cost(Decimal::new(100, 0));
 
         let lot = Lot {
+            fill_time: Utc::now(),
             quantity: Decimal::new(4, 0),
             price: Decimal::new(5, 0),
         };

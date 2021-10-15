@@ -37,6 +37,18 @@ impl Clock {
         }
     }
 
+    //pub fn datetime_offset(&self, n: usize) -> Option<&DateTime<Utc>> {
+    //    self.timestamps.get(self.idx - n)
+    //}
+
+    pub fn previous_datetime(&self) -> Option<&DateTime<Utc>> {
+        if self.idx == 0 {
+            None
+        } else {
+            self.timestamps.get(self.idx - 1)
+        }
+    }
+
     pub fn datetime(&self) -> Option<&DateTime<Utc>> {
         self.timestamps.get(self.idx)
     }

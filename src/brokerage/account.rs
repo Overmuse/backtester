@@ -44,6 +44,7 @@ impl Account {
 #[cfg(test)]
 mod test {
     use super::*;
+    use chrono::Utc;
 
     #[test]
     fn it_can_be_initialized() {
@@ -70,6 +71,7 @@ mod test {
         account.add_lot(
             "AAPL".into(),
             Lot {
+                fill_time: Utc::now(),
                 price: Decimal::new(2, 0),
                 quantity: Decimal::new(3, 0),
             },

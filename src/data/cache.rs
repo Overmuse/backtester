@@ -89,7 +89,7 @@ impl<T: DataProvider + Send + Sync> DataCache for FileDataCache<T> {
         let mut path = self.dir.clone();
         path.push("data.json");
         let mut file = OpenOptions::new().create(true).write(true).open(path)?;
-        let bytes = serde_json::to_vec(&data)?;
+        let bytes = serde_json::to_vec_pretty(&data)?;
         file.write_all(&bytes)?;
         Ok(())
     }
