@@ -1,4 +1,4 @@
-use crate::brokerage::Brokerage;
+use crate::brokerage::{Brokerage, Event};
 use crate::markets::market::Market;
 
 pub trait Strategy {
@@ -12,10 +12,17 @@ pub trait Strategy {
     ) -> Result<(), Self::Error> {
         Ok(())
     }
+    fn on_event(&mut self, _event: Event) -> Result<(), Self::Error> {
+        Ok(())
+    }
     fn at_open(&mut self, _brokerage: &mut Brokerage, _market: &Market) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn on_data(&mut self, _brokerage: &mut Brokerage, _market: &Market) -> Result<(), Self::Error> {
+    fn during_regular_hours(
+        &mut self,
+        _brokerage: &mut Brokerage,
+        _market: &Market,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
     fn at_close(

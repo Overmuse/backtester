@@ -36,11 +36,14 @@ impl<S: Strategy> Simulator<S> {
                     self.strategy.before_open(&mut self.brokerage, &self.market)
                 }
                 MarketState::Opening => self.strategy.at_open(&mut self.brokerage, &self.market),
-                MarketState::Open => self.strategy.on_data(&mut self.brokerage, &self.market),
+                MarketState::Open => self
+                    .strategy
+                    .during_regular_hours(&mut self.brokerage, &self.market),
                 MarketState::Closing => self.strategy.at_close(&mut self.brokerage, &self.market),
                 MarketState::Closed => self.strategy.after_close(&mut self.brokerage, &self.market),
             }?;
             while let Ok(event) = self.event_listener.try_recv() {
+                self.strategy.on_event(event.clone())?;
                 self.handle_event(event)
             }
             self.statistics

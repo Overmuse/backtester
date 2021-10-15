@@ -87,6 +87,14 @@ impl Position {
             Some((self.cost_basis() / qty).round_dp(8))
         }
     }
+
+    pub fn market_value(&self, price: Decimal) -> Decimal {
+        self.quantity() * price
+    }
+
+    pub fn unrealized_profit(&self, price: Decimal) -> Decimal {
+        self.market_value(price) - self.cost_basis()
+    }
 }
 
 #[cfg(test)]
@@ -95,55 +103,71 @@ mod test {
 
     #[test]
     fn it_can_do_fifo_lot_aggregation() {
+        let mut price = Decimal::new(100, 0);
         let mut position = Position::new(
             "AAPL".to_string(),
             Lot {
-                price: Decimal::new(100, 0),
+                price,
                 quantity: Decimal::new(2, 0),
             },
         );
         assert_eq!(position.quantity(), Decimal::new(2, 0));
         assert_eq!(position.cost_basis(), Decimal::new(200, 0));
-        assert_eq!(position.average_price(), Some(Decimal::new(100, 0)));
+        assert_eq!(position.average_price(), Some(price));
+        assert_eq!(position.market_value(price), Decimal::new(200, 0));
+        assert_eq!(position.unrealized_profit(price), Decimal::ZERO);
 
+        price = Decimal::new(150, 0);
         position.add_lot(Lot {
-            price: Decimal::new(150, 0),
+            price,
             quantity: Decimal::new(3, 0),
         });
         assert_eq!(position.quantity(), Decimal::new(5, 0));
         assert_eq!(position.cost_basis(), Decimal::new(650, 0));
         assert_eq!(position.average_price(), Some(Decimal::new(130, 0)));
+        assert_eq!(position.market_value(price), Decimal::new(750, 0));
+        assert_eq!(position.unrealized_profit(price), Decimal::new(100, 0));
 
+        price = Decimal::new(120, 0);
         position.add_lot(Lot {
-            price: Decimal::new(120, 0),
+            price,
             quantity: Decimal::new(-1, 0),
         });
         assert_eq!(position.quantity(), Decimal::new(4, 0));
         assert_eq!(position.cost_basis(), Decimal::new(550, 0));
         assert_eq!(position.average_price(), Some(Decimal::new(1375, 1)));
+        assert_eq!(position.market_value(price), Decimal::new(480, 0));
+        assert_eq!(position.unrealized_profit(price), Decimal::new(-70, 0));
 
         position.add_lot(Lot {
-            price: Decimal::new(120, 0),
+            price,
             quantity: Decimal::new(-3, 0),
         });
         assert_eq!(position.quantity(), Decimal::new(1, 0));
         assert_eq!(position.cost_basis(), Decimal::new(150, 0));
         assert_eq!(position.average_price(), Some(Decimal::new(150, 0)));
+        assert_eq!(position.market_value(price), Decimal::new(120, 0));
+        assert_eq!(position.unrealized_profit(price), Decimal::new(-30, 0));
 
         position.add_lot(Lot {
-            price: Decimal::new(120, 0),
+            price,
             quantity: Decimal::new(-3, 0),
         });
         assert_eq!(position.quantity(), Decimal::new(-2, 0));
         assert_eq!(position.cost_basis(), Decimal::new(-240, 0));
         assert_eq!(position.average_price(), Some(Decimal::new(120, 0)));
+        assert_eq!(position.market_value(price), Decimal::new(-240, 0));
+        assert_eq!(position.unrealized_profit(price), Decimal::ZERO);
 
+        price = Decimal::new(80, 0);
         position.add_lot(Lot {
-            price: Decimal::new(80, 0),
+            price,
             quantity: Decimal::new(2, 0),
         });
         assert_eq!(position.quantity(), Decimal::ZERO);
         assert_eq!(position.cost_basis(), Decimal::ZERO);
         assert_eq!(position.average_price(), None);
+        assert_eq!(position.market_value(price), Decimal::ZERO);
+        assert_eq!(position.unrealized_profit(price), Decimal::ZERO);
     }
 }
