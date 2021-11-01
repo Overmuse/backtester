@@ -166,17 +166,27 @@ impl Brokerage {
 
         // Can clone cheaply here due to RC
         let market = self.market.clone();
-        let orders_to_send: Vec<Order> = self
-            .account
-            .active_orders
-            .drain_filter(|order| {
-                let price = market.get_current_price(&order.ticker);
-                match price {
-                    Some(price) => order.is_marketable(price),
-                    None => false,
+
+        // Manual version of drain_filter to be able to use the stable toolchain
+        // TODO: Change to use drain_filter once https://github.com/rust-lang/rust/issues/43244 is
+        // merged.
+        let mut i = 0;
+        let v = &mut self.account.active_orders;
+        let mut orders_to_send: Vec<Order> = Vec::new();
+        while i < v.len() {
+            let order = &v[i];
+            let price = market.get_current_price(&order.ticker);
+            if let Some(price) = price {
+                if order.is_marketable(price) {
+                    let val = v.remove(i);
+                    orders_to_send.push(val);
+                } else {
+                    i += 1
                 }
-            })
-            .collect();
+            } else {
+                i += 1
+            }
+        }
         for order in orders_to_send {
             let price = market
                 .get_current_price(&order.ticker)
