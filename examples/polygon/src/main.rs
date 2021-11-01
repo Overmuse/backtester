@@ -32,13 +32,13 @@ async fn main() -> Result<()> {
     let downloader = PolygonDownloader.file_cache("data");
     let meta = DataOptions::new(
         vec!["E".to_string(), "M".to_string()],
-        NaiveDate::from_ymd(2021, 10, 1),
-        NaiveDate::from_ymd(2021, 10, 14),
+        NaiveDate::from_ymd(2011, 1, 1),
+        NaiveDate::from_ymd(2020, 12, 31),
     );
     let data = downloader.download_data(&meta).await?;
     let market = Market::new(data);
     let brokerage = Brokerage::new(Decimal::new(100000, 0), market)
-        .commission(PerDollarCommission::new(Decimal::ONE));
+        .commission(PerDollarCommission::new(Decimal::new(1, 3)));
     let mut simulator = Simulator::new(brokerage, Strat);
     simulator.run()
 }

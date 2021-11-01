@@ -8,7 +8,6 @@ pub struct Account {
     pub inactive_orders: Vec<Order>,
     pub positions: HashMap<String, Position>,
     pub cash: Decimal,
-    pub equity: Decimal,
     starting_cash: Decimal,
 }
 
@@ -19,7 +18,6 @@ impl Account {
             inactive_orders: Vec::new(),
             positions: HashMap::new(),
             cash,
-            equity: cash,
             starting_cash: cash,
         }
     }
@@ -32,9 +30,16 @@ impl Account {
             .or_insert_with(|| Position::new(ticker, lot));
     }
 
+    pub fn market_value(&self, ticker: &str, price: Decimal) -> Decimal {
+        self.positions
+            .get(ticker)
+            .map(|pos| pos.quantity())
+            .unwrap_or(Decimal::ZERO)
+            * price
+    }
+
     pub fn reset(&mut self) {
         self.cash = self.starting_cash;
-        self.equity = self.starting_cash;
         self.active_orders.clear();
         self.inactive_orders.clear();
         self.positions.clear()
@@ -53,7 +58,6 @@ mod test {
         assert!(account.inactive_orders.is_empty());
         assert!(account.positions.is_empty());
         assert_eq!(account.cash, Decimal::ONE_HUNDRED);
-        assert_eq!(account.equity, Decimal::ONE_HUNDRED);
         assert_eq!(account.starting_cash, Decimal::ONE_HUNDRED);
     }
 
@@ -79,5 +83,7 @@ mod test {
         assert_eq!(account.cash, Decimal::new(94, 0));
         let pos = account.positions.get("AAPL");
         assert_eq!(pos.unwrap().quantity(), Decimal::new(3, 0));
+        let market_value = account.market_value("AAPL", Decimal::new(100, 0));
+        assert_eq!(market_value, Decimal::new(300, 0));
     }
 }

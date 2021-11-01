@@ -5,6 +5,8 @@ use crate::strategy::Strategy;
 use chrono::{DateTime, Utc};
 use std::sync::mpsc::Receiver;
 
+const CLEAR_SCREEN: &str = "\x1B[2J\x1B[1;1H";
+
 pub struct Simulator<S: Strategy> {
     brokerage: Brokerage,
     market: Market,
@@ -32,6 +34,8 @@ impl<S: Strategy> Simulator<S> {
     pub fn run(&mut self) -> Result<(), S::Error> {
         self.strategy.initialize();
         while !self.market.is_done() {
+            print!("{}", CLEAR_SCREEN);
+            println!("{}", self.market.datetime());
             match self.market.state() {
                 MarketState::PreOpen => {
                     self.strategy.before_open(&mut self.brokerage, &self.market)
@@ -49,11 +53,11 @@ impl<S: Strategy> Simulator<S> {
                 self.strategy.on_event(event.clone())?;
                 self.handle_event(event)
             }
-            self.statistics
-                .record_equity(self.brokerage.get_account().equity);
+            self.statistics.record_equity(self.brokerage.get_equity());
             self.market.tick();
         }
-        Ok(self.generate_report())
+        self.generate_report();
+        Ok(())
     }
 
     fn handle_event(&mut self, event: Event) {
@@ -73,6 +77,6 @@ impl<S: Strategy> Simulator<S> {
     }
 
     pub fn generate_report(&self) {
-        println!("{:#?}", self.statistics)
+        println!("{}", self.statistics)
     }
 }

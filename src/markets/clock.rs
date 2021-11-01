@@ -78,8 +78,8 @@ impl Clock {
             None => return,
         };
         let next_datetime = self.next_datetime();
+        let state = &self.market_state;
         if let Some(next_datetime) = next_datetime {
-            let state = &self.market_state;
             if datetime.date() != next_datetime.date() {
                 if let MarketState::Closed = state {
                     self.idx += 1
@@ -91,12 +91,9 @@ impl Clock {
                     _ => self.idx += 1,
                 }
             }
+        } else if let MarketState::Closed = state {
         } else {
-            let state = &self.market_state;
-            if let MarketState::Closed = state {
-            } else {
-                self.market_state = state.next();
-            }
+            self.market_state = state.next();
         }
     }
 }

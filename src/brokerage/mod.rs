@@ -72,6 +72,18 @@ impl Brokerage {
         self.account.positions.values().collect()
     }
 
+    pub fn get_equity(&self) -> Decimal {
+        let tickers = self.account.positions.keys();
+        let positions_value: Decimal = tickers
+            .map(|ticker| (ticker, self.market.get_current_price(ticker)))
+            .map(|(ticker, price)| {
+                self.account
+                    .market_value(ticker, price.unwrap_or(Decimal::ZERO))
+            })
+            .sum();
+        positions_value + self.account.cash
+    }
+
     pub fn commission<C: 'static + Commission>(mut self, commission: C) -> Self {
         self.commission = Box::new(commission);
         self
@@ -107,12 +119,12 @@ impl Brokerage {
         self.report_event(&event);
     }
 
-    fn save_order(&mut self, order: Order) {
+    fn save_order(&mut self, order: &Order) {
         self.account.active_orders.push(order.clone());
         let event = Event::OrderUpdate {
             status: OrderStatus::Submitted,
             time: self.market.datetime(),
-            order,
+            order: order.clone(),
         };
         self.report_event(&event)
     }
@@ -129,13 +141,13 @@ impl Brokerage {
 
     pub fn send_order(&mut self, order: Order) {
         if self.market.is_open() {
+            self.save_order(&order);
             let current_price = self.market.get_current_price(&order.ticker);
             if let Some(price) = current_price {
                 if order.is_marketable(price) {
-                    return self.fill_order(order, price);
+                    self.fill_order(order, price);
                 }
             }
-            self.save_order(order)
         } else {
             self.reject_order(order);
         }
@@ -151,6 +163,7 @@ impl Brokerage {
 
     pub(crate) fn reconcile_active_orders(&mut self) {
         // TODO: This whole function is very inefficient
+
         // Can clone cheaply here due to RC
         let market = self.market.clone();
         let orders_to_send: Vec<Order> = self

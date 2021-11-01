@@ -98,12 +98,12 @@ impl Market {
     }
 
     pub fn datetime(&self) -> DateTime<Utc> {
-        self.inner
+        *self
+            .inner
             .borrow()
             .clock
             .datetime()
             .expect("Should always be in range")
-            .clone()
     }
 
     pub fn state(&self) -> MarketState {
