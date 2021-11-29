@@ -105,6 +105,7 @@ impl Brokerage {
         self.account.add_lot(order.ticker.clone(), lot);
         self.account.cash -= commission;
         self.account.inactive_orders.push(order.clone());
+        self.account.active_orders.retain(|o| o.id != order.id);
         let time = self.market.datetime();
         let event = Event::OrderUpdate {
             status: OrderStatus::Filled {

@@ -1,4 +1,5 @@
 use crate::brokerage::{Event, OrderStatus};
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use std::fmt;
 
@@ -46,8 +47,8 @@ Rejected:  {:>digits$}
 pub struct Statistics {
     order_counts: OrderCounts,
     commission_paid: Decimal,
-    equity: Vec<Decimal>,
-    event_log: Vec<Event>,
+    pub equity: Vec<(DateTime<Utc>, Decimal)>,
+    pub event_log: Vec<Event>,
 }
 
 impl Statistics {
@@ -74,8 +75,13 @@ impl Statistics {
         }
     }
 
-    pub fn record_equity(&mut self, equity: Decimal) {
-        self.equity.push(equity)
+    pub fn record_equity(&mut self, datetime: DateTime<Utc>, equity: Decimal) -> Result<(), ()> {
+        let prev = self.equity.last().unwrap_or(&(datetime, equity)).1;
+        if (equity / prev - Decimal::ONE).abs() > Decimal::ONE {
+            Err(())
+        } else {
+            Ok(self.equity.push((datetime, equity)))
+        }
     }
 
     pub fn increase_commission(&mut self, amount: Decimal) {
@@ -86,10 +92,10 @@ impl Statistics {
         self.equity
             .iter()
             .fold((Decimal::ZERO, Decimal::ZERO), |mut state, equity| {
-                if equity > &state.0 {
-                    state.0 = *equity
+                if equity.1 > state.0 {
+                    state.0 = equity.1
                 };
-                state.1 = equity / state.0 - Decimal::ONE;
+                state.1 = equity.1 / state.0 - Decimal::ONE;
                 state
             })
             .1
@@ -121,11 +127,24 @@ Max:      {:>.2}
 Min:      {:>.2}
 Ending:   {:>.2}
             "#,
-            self.equity.first().unwrap().round_dp(2),
-            self.equity.iter().max().unwrap().round_dp(2),
-            self.equity.iter().min().unwrap().round_dp(2),
-            self.equity.last().unwrap().round_dp(2),
+            self.equity.first().unwrap().1.round_dp(2),
+            self.equity.iter().map(|x| x.1).max().unwrap().round_dp(2),
+            self.equity.iter().map(|x| x.1).min().unwrap().round_dp(2),
+            self.equity.last().unwrap().1.round_dp(2),
         )?;
+        write!(
+            f,
+            r#"
+===============
+    Returns
+===============
+Total: {:>.2}%
+            "#,
+            (((self.equity.last().unwrap().1 / self.equity.first().unwrap().1) - Decimal::ONE)
+                * Decimal::new(100, 0))
+            .round_dp(2)
+        )
+        .unwrap();
         write!(
             f,
             r#"

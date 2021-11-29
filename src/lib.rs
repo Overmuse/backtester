@@ -15,7 +15,7 @@ pub use simulator::Simulator;
 pub use strategy::Strategy;
 
 pub mod prelude {
-    pub use crate::data::{DataOptions, DataProvider, FileCache};
+    pub use crate::data::{DataOptions, DataProvider, FileCache, MarketTimeExt};
     pub use crate::{
         brokerage::{order::Order, Brokerage},
         markets::market::Market,

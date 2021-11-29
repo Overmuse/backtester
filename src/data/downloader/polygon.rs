@@ -1,6 +1,10 @@
-use crate::data::{error::Error, Aggregate, DataOptions, DataProvider, MarketData, PriceData};
-use ::polygon::rest::{Aggregate as PolygonAggregate, AggregateWrapper, Client, GetAggregate};
+use crate::data::{error::Error, Aggregate, DataOptions, DataProvider, MarketData, Resolution};
+use ::polygon::rest::{client, Aggregate as PolygonAggregate, GetAggregate, Timespan};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use futures::{StreamExt, TryStreamExt};
+use std::collections::{BTreeMap, HashMap};
+use stream_flatten_iters::TryStreamExt as _;
 
 pub struct PolygonDownloader;
 
@@ -20,29 +24,34 @@ impl From<PolygonAggregate> for Aggregate {
 #[async_trait]
 impl DataProvider for PolygonDownloader {
     async fn download_data(&self, meta: &DataOptions) -> Result<MarketData, Error> {
-        let client = Client::from_env()?;
-        let queries = meta
-            .tickers
-            .iter()
-            .map(|ticker| GetAggregate::new(ticker, meta.start, meta.end));
-        let wrappers: Result<Vec<AggregateWrapper>, Error> = client
-            .send_all(queries)
-            .await
-            .into_iter()
-            .map(|x| x.map_err(From::from))
-            .collect();
-        let prices: PriceData = wrappers?
-            .into_iter()
-            .map(|w| (w.ticker, w.results.unwrap_or_default()))
-            .map(|(ticker, data)| {
-                (
-                    ticker,
-                    data.into_iter()
-                        .map(|agg| (agg.t, From::from(agg)))
-                        .collect(),
-                )
-            })
-            .collect();
-        Ok(MarketData { prices })
+        let client = client(&std::env::var("POLYGON_TOKEN").unwrap());
+        let timespan = match meta.resolution {
+            Resolution::Day => Timespan::Day,
+            Resolution::Minute => Timespan::Minute,
+        };
+        let mut map: HashMap<String, BTreeMap<DateTime<Utc>, Aggregate>> = HashMap::new();
+        for ticker in &meta.tickers {
+            let query = GetAggregate::new(
+                ticker,
+                meta.start.and_hms(0, 0, 0),
+                meta.end.and_hms(0, 0, 0),
+            )
+            .timespan(timespan)
+            .limit(50000);
+
+            let prices: BTreeMap<DateTime<Utc>, Aggregate> = client
+                .send_paginated(&query)
+                .map_ok(|x| x.results)
+                .try_flatten_iters()
+                .filter_map(|x| async { x.ok() })
+                .map(|agg| (agg.t, From::from(agg)))
+                .collect()
+                .await;
+            map.insert(ticker.to_string(), prices);
+        }
+        Ok(MarketData {
+            prices: map,
+            resolution: meta.resolution,
+        })
     }
 }

@@ -22,7 +22,7 @@ impl Order {
         Self {
             id: Uuid::new_v4(),
             ticker: ticker.to_string(),
-            shares,
+            shares: shares.round_dp(8),
             order_type: OrderType::Market,
         }
     }

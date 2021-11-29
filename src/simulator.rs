@@ -13,6 +13,7 @@ pub struct Simulator<S: Strategy> {
     strategy: S,
     statistics: Statistics,
     event_listener: Receiver<Event>,
+    verbose: bool,
 }
 
 impl<S: Strategy> Simulator<S> {
@@ -26,7 +27,13 @@ impl<S: Strategy> Simulator<S> {
             strategy,
             statistics,
             event_listener,
+            verbose: false,
         }
+    }
+
+    pub fn verbose(mut self, verbose: bool) -> Self {
+        self.verbose = verbose;
+        self
     }
 }
 
@@ -34,8 +41,10 @@ impl<S: Strategy> Simulator<S> {
     pub fn run(&mut self) -> Result<(), S::Error> {
         self.strategy.initialize();
         while !self.market.is_done() {
-            print!("{}", CLEAR_SCREEN);
-            println!("{}", self.market.datetime());
+            if self.verbose {
+                print!("{}", CLEAR_SCREEN);
+                print!("{}", self.market.datetime());
+            }
             match self.market.state() {
                 MarketState::PreOpen => {
                     self.strategy.before_open(&mut self.brokerage, &self.market)
@@ -53,7 +62,22 @@ impl<S: Strategy> Simulator<S> {
                 self.strategy.on_event(event.clone())?;
                 self.handle_event(event)
             }
-            self.statistics.record_equity(self.brokerage.get_equity());
+            if let Err(_) = self
+                .statistics
+                .record_equity(self.market.datetime(), self.brokerage.get_equity())
+            {
+                println!(
+                    "Suspicious equity value\nDatetime: {date}\nEquity: {equity:.2}\nCash:   {cash:.2}",
+                    date = self.market.datetime(),
+                    equity = self.brokerage.get_equity(),
+                    cash = self.brokerage.get_account().cash,
+                );
+                println!("Positions:");
+                for position in self.brokerage.get_positions() {
+                    println!("{}", position)
+                }
+                println!()
+            }
             self.market.tick();
         }
         self.generate_report();
@@ -77,6 +101,8 @@ impl<S: Strategy> Simulator<S> {
     }
 
     pub fn generate_report(&self) {
-        println!("{}", self.statistics)
+        //println!("{}", self.statistics);
+        println!("{:?}", self.statistics.equity)
+        //println!("{:#?}", self.statistics.event_log)
     }
 }

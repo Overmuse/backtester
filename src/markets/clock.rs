@@ -37,10 +37,6 @@ impl Clock {
         }
     }
 
-    //pub fn datetime_offset(&self, n: usize) -> Option<&DateTime<Utc>> {
-    //    self.timestamps.get(self.idx - n)
-    //}
-
     pub fn previous_datetime(&self) -> Option<&DateTime<Utc>> {
         if self.idx == 0 {
             None
@@ -72,6 +68,10 @@ impl Clock {
         }
     }
 
+    pub fn warmup(&mut self, periods: usize) {
+        self.idx += periods
+    }
+
     pub fn tick(&mut self) {
         let datetime = match self.datetime() {
             Some(datetime) => datetime,
@@ -87,7 +87,7 @@ impl Clock {
                 self.market_state = state.next();
             } else {
                 match state {
-                    MarketState::Opening | MarketState::Open => self.market_state = state.next(),
+                    MarketState::PreOpen | MarketState::Opening => self.market_state = state.next(),
                     _ => self.idx += 1,
                 }
             }
@@ -101,10 +101,11 @@ impl Clock {
 #[cfg(test)]
 mod test {
     use super::*;
+    use chrono::Duration;
 
     #[test]
     fn it_can_tell_and_update_time() {
-        let mut clock = Clock::new(vec![Utc::now(), Utc::now() + chrono::Duration::days(1)]);
+        let mut clock = Clock::new(vec![Utc::now(), Utc::now() + Duration::days(1)]);
         assert!(clock.datetime().is_some());
         assert!(clock.next_datetime().is_some());
 
@@ -130,5 +131,64 @@ mod test {
         clock.tick();
         assert_eq!(clock.state(), MarketState::PreOpen);
         assert!(clock.next_datetime().is_none());
+    }
+
+    #[test]
+    fn it_works_for_intraday_data() {
+        let mut clock = Clock::new(vec![
+            Utc::now(),
+            Utc::now() + Duration::minutes(1),
+            Utc::now() + Duration::days(1),
+            Utc::now() + Duration::days(1) + Duration::minutes(1),
+        ]);
+        assert!(clock.datetime().is_some());
+        assert!(clock.next_datetime().is_some());
+
+        assert_eq!(clock.state(), MarketState::PreOpen);
+        assert!(!clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::Opening);
+        assert!(clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::Open);
+        assert!(clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::Open);
+        assert!(clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::Closing);
+        assert!(clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::Closed);
+        assert!(!clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::PreOpen);
+        assert!(!clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::Opening);
+        assert!(clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::Open);
+        assert!(clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::Open);
+        assert!(clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::Closing);
+        assert!(clock.is_open());
+
+        clock.tick();
+        assert_eq!(clock.state(), MarketState::Closed);
+        assert!(!clock.is_open());
     }
 }
