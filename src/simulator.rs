@@ -3,9 +3,8 @@ use crate::markets::{clock::MarketState, market::Market};
 use crate::statistics::Statistics;
 use crate::strategy::Strategy;
 use chrono::{DateTime, Utc};
+use log::trace;
 use std::sync::mpsc::Receiver;
-
-const CLEAR_SCREEN: &str = "\x1B[2J\x1B[1;1H";
 
 pub struct Simulator<S: Strategy> {
     brokerage: Brokerage,
@@ -13,7 +12,6 @@ pub struct Simulator<S: Strategy> {
     strategy: S,
     statistics: Statistics,
     event_listener: Receiver<Event>,
-    verbose: bool,
 }
 
 impl<S: Strategy> Simulator<S> {
@@ -27,13 +25,7 @@ impl<S: Strategy> Simulator<S> {
             strategy,
             statistics,
             event_listener,
-            verbose: false,
         }
-    }
-
-    pub fn verbose(mut self, verbose: bool) -> Self {
-        self.verbose = verbose;
-        self
     }
 }
 
@@ -41,11 +33,10 @@ impl<S: Strategy> Simulator<S> {
     pub fn run(&mut self) -> Result<(), S::Error> {
         self.strategy.initialize();
         while !self.market.is_done() {
-            if self.verbose {
-                print!("{}", CLEAR_SCREEN);
-                print!("{}", self.market.datetime());
-            }
-            match self.market.state() {
+            let datetime = self.market.datetime();
+            let state = self.market.state();
+            trace!("{} - {:?}", datetime, state);
+            match state {
                 MarketState::PreOpen => {
                     self.strategy.before_open(&mut self.brokerage, &self.market)
                 }
@@ -56,28 +47,19 @@ impl<S: Strategy> Simulator<S> {
                         .during_regular_hours(&mut self.brokerage, &self.market)
                 }
                 MarketState::Closing => self.strategy.at_close(&mut self.brokerage, &self.market),
-                MarketState::Closed => self.strategy.after_close(&mut self.brokerage, &self.market),
+                MarketState::Closed => {
+                    self.brokerage.expire_orders();
+                    self.strategy.after_close(&mut self.brokerage, &self.market)
+                }
             }?;
             while let Ok(event) = self.event_listener.try_recv() {
+                trace!("Event received: {:?}", event);
                 self.strategy.on_event(event.clone())?;
                 self.handle_event(event)
             }
-            if let Err(_) = self
-                .statistics
-                .record_equity(self.market.datetime(), self.brokerage.get_equity())
-            {
-                println!(
-                    "Suspicious equity value\nDatetime: {date}\nEquity: {equity:.2}\nCash:   {cash:.2}",
-                    date = self.market.datetime(),
-                    equity = self.brokerage.get_equity(),
-                    cash = self.brokerage.get_account().cash,
-                );
-                println!("Positions:");
-                for position in self.brokerage.get_positions() {
-                    println!("{}", position)
-                }
-                println!()
-            }
+            let equity = self.brokerage.get_equity();
+            trace!("Equity: {:.2}", equity);
+            self.statistics.record_equity(datetime, equity);
             self.market.tick();
         }
         self.generate_report();
@@ -101,8 +83,8 @@ impl<S: Strategy> Simulator<S> {
     }
 
     pub fn generate_report(&self) {
-        //println!("{}", self.statistics);
-        println!("{:?}", self.statistics.equity)
+        println!("{}", self.statistics);
+        //println!("{:?}", self.statistics.equity)
         //println!("{:#?}", self.statistics.event_log)
     }
 }

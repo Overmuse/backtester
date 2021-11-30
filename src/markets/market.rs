@@ -18,10 +18,10 @@ impl MarketDataCache {
     fn update(&mut self, ticker: &str, aggregate: &Aggregate) {
         if aggregate.datetime.is_opening() {
             self.last_open
-                .insert(ticker.to_string(), aggregate.open.clone());
+                .insert(ticker.to_string(), aggregate.open);
         } else if aggregate.datetime.is_closing() {
             self.last_close
-                .insert(ticker.to_string(), aggregate.close.clone());
+                .insert(ticker.to_string(), aggregate.close);
         }
         let last = self.current.insert(ticker.to_string(), aggregate.clone());
         if let Some(last) = last {

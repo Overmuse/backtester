@@ -44,6 +44,7 @@ pub enum OrderStatus {
     },
     PartiallyFilled,
     Rejected,
+    Expired,
 }
 
 #[derive(Debug)]
@@ -140,6 +141,16 @@ impl Brokerage {
         self.report_event(&event)
     }
 
+    fn expire_order(&mut self, order: Order) {
+        self.account.inactive_orders.push(order.clone());
+        let event = Event::OrderUpdate {
+            status: OrderStatus::Expired,
+            time: self.market.datetime(),
+            order,
+        };
+        self.report_event(&event)
+    }
+
     pub fn send_order(&mut self, order: Order) {
         if self.market.is_open() {
             self.save_order(&order);
@@ -163,8 +174,6 @@ impl Brokerage {
     }
 
     pub(crate) fn reconcile_active_orders(&mut self) {
-        // TODO: This whole function is very inefficient
-
         // Can clone cheaply here due to RC
         let market = self.market.clone();
 
@@ -193,6 +202,16 @@ impl Brokerage {
                 .get_current_price(&order.ticker)
                 .expect("Guaranteed to exist");
             self.fill_order(order, price)
+        }
+    }
+
+    pub(crate) fn expire_orders(&mut self) {
+        loop {
+            let maybe_order = self.account.active_orders.pop();
+            match maybe_order {
+                Some(order) => self.expire_order(order),
+                None => return,
+            }
         }
     }
 

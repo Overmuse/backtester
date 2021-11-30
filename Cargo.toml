@@ -9,17 +9,18 @@ edition = "2018"
 [dependencies]
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.6.0"
+futures = "0.3.17"
 num-traits = "0.2.14"
 rust_decimal = "1.16.0"
 #polygon = { git = "ssh://git@github.com/Overmuse/polygon", tag = "v0.13.0", default-features = false, features = ["rest"], optional = false }
 polygon = { path = "../polygon", default-features = false, features = ["rest"], optional = true }
+rmp-serde = "0.15.5"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+stream-flatten-iters = "0.2.0"
 thiserror = "1.0.30"
 uuid = { version = "0.8.2", features = ["v4"] }
-futures = "0.3.17"
-stream-flatten-iters = "0.2.0"
-chrono-tz = "0.6.0"
+log = "0.4.14"
 
 [features]
 default = []

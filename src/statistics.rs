@@ -9,14 +9,21 @@ pub struct OrderCounts {
     cancelled: usize,
     filled: usize,
     rejected: usize,
+    expired: usize,
 }
 
 impl fmt::Display for OrderCounts {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let max = vec![self.submitted, self.cancelled, self.filled, self.rejected]
-            .into_iter()
-            .max()
-            .unwrap();
+        let max = vec![
+            self.submitted,
+            self.cancelled,
+            self.filled,
+            self.rejected,
+            self.expired,
+        ]
+        .into_iter()
+        .max()
+        .unwrap();
         let digits = f64::log10(max as f64).ceil() as usize;
         let full_digits = digits + 11;
         write!(
@@ -29,6 +36,7 @@ Submitted: {:>digits$}
 Cancelled: {:>digits$}
 Filled:    {:>digits$}
 Rejected:  {:>digits$}
+Expired:   {:>digits$}
         "#,
             "",
             "Orders",
@@ -37,6 +45,7 @@ Rejected:  {:>digits$}
             self.cancelled,
             self.filled,
             self.rejected,
+            self.expired,
             full_digits = full_digits,
             digits = digits
         )
@@ -71,17 +80,13 @@ impl Statistics {
             OrderStatus::Cancelled => self.order_counts.cancelled += 1,
             OrderStatus::Filled { .. } => self.order_counts.filled += 1,
             OrderStatus::Rejected => self.order_counts.rejected += 1,
+            OrderStatus::Expired => self.order_counts.expired += 1,
             OrderStatus::PartiallyFilled => (),
         }
     }
 
-    pub fn record_equity(&mut self, datetime: DateTime<Utc>, equity: Decimal) -> Result<(), ()> {
-        let prev = self.equity.last().unwrap_or(&(datetime, equity)).1;
-        if (equity / prev - Decimal::ONE).abs() > Decimal::ONE {
-            Err(())
-        } else {
-            Ok(self.equity.push((datetime, equity)))
-        }
+    pub fn record_equity(&mut self, datetime: DateTime<Utc>, equity: Decimal) {
+        self.equity.push((datetime, equity));
     }
 
     pub fn increase_commission(&mut self, amount: Decimal) {
@@ -89,16 +94,26 @@ impl Statistics {
     }
 
     pub fn max_drawdown(&self) -> Decimal {
+        #[derive(Default)]
+        struct State {
+            max_equity: Decimal,
+            max_drawdown: Decimal,
+        }
+
         self.equity
             .iter()
-            .fold((Decimal::ZERO, Decimal::ZERO), |mut state, equity| {
-                if equity.1 > state.0 {
-                    state.0 = equity.1
+            .map(|(_, e)| e)
+            .fold(State::default(), |mut state, equity| {
+                if equity > &state.max_equity {
+                    state.max_equity = *equity
                 };
-                state.1 = equity.1 / state.0 - Decimal::ONE;
+                let drawdown = equity / state.max_equity - Decimal::ONE;
+                if drawdown < state.max_drawdown {
+                    state.max_drawdown = drawdown;
+                }
                 state
             })
-            .1
+            .max_drawdown
     }
 }
 

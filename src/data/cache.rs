@@ -65,11 +65,11 @@ impl<T: DataProvider + Send + Sync> DataCache for FileDataCache<T> {
 
     fn is_cache_valid(&self, meta: &DataOptions) -> bool {
         let mut path = self.dir.clone();
-        path.push("meta.json");
+        path.push("meta.data");
         if path.exists() {
             let bytes = std::fs::read(path);
             if let Ok(bytes) = bytes {
-                let cached_meta = serde_json::from_slice::<DataOptions>(&bytes);
+                let cached_meta = rmp_serde::from_slice::<DataOptions>(&bytes);
                 if let Ok(cached_meta) = cached_meta {
                     let ticker_check = meta
                         .tickers
@@ -87,9 +87,9 @@ impl<T: DataProvider + Send + Sync> DataCache for FileDataCache<T> {
 
     fn save_data(&self, data: &MarketData) -> Result<(), Error> {
         let mut path = self.dir.clone();
-        path.push("data.json");
+        path.push("prices.data");
         let mut file = OpenOptions::new().create(true).write(true).open(path)?;
-        let bytes = serde_json::to_vec_pretty(&data)?;
+        let bytes = rmp_serde::to_vec(&data)?;
         file.write_all(&bytes)?;
         Ok(())
     }
@@ -97,9 +97,9 @@ impl<T: DataProvider + Send + Sync> DataCache for FileDataCache<T> {
     async fn load_data(&self, meta: &DataOptions) -> Result<MarketData, Error> {
         let mut path = self.dir.clone();
         if self.is_cache_valid(meta) {
-            path.push("data.json");
+            path.push("prices.data");
             let bytes = std::fs::read(path)?;
-            let mut data: MarketData = serde_json::from_slice(&bytes)?;
+            let mut data: MarketData = rmp_serde::from_slice(&bytes)?;
             data.prices
                 .retain(|ticker, _| meta.tickers.contains(ticker));
             data.prices.values_mut().for_each(|timeseries| {
@@ -110,9 +110,9 @@ impl<T: DataProvider + Send + Sync> DataCache for FileDataCache<T> {
             Ok(data)
         } else {
             std::fs::create_dir_all(path.clone())?;
-            path.push("meta.json");
+            path.push("meta.data");
             let mut file = OpenOptions::new().create(true).write(true).open(path)?;
-            let bytes = serde_json::to_vec(meta)?;
+            let bytes = rmp_serde::to_vec(meta)?;
             file.write_all(&bytes)?;
             let data = self.data_provider().download_data(meta).await?;
             self.save_data(&data)?;
