@@ -3,7 +3,7 @@ use crate::markets::clock::{Clock, MarketState};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use std::cell::RefCell;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Default, Debug, Clone)]
@@ -17,11 +17,9 @@ struct MarketDataCache {
 impl MarketDataCache {
     fn update(&mut self, ticker: &str, aggregate: &Aggregate) {
         if aggregate.datetime.is_opening() {
-            self.last_open
-                .insert(ticker.to_string(), aggregate.open);
+            self.last_open.insert(ticker.to_string(), aggregate.open);
         } else if aggregate.datetime.is_closing() {
-            self.last_close
-                .insert(ticker.to_string(), aggregate.close);
+            self.last_close.insert(ticker.to_string(), aggregate.close);
         }
         let last = self.current.insert(ticker.to_string(), aggregate.clone());
         if let Some(last) = last {
@@ -55,9 +53,8 @@ pub struct Market {
 
 impl Market {
     pub fn new(data: MarketData) -> Self {
-        let timestamps: BTreeSet<DateTime<Utc>> =
-            data.prices.values().flatten().map(|x| *x.0).collect();
-        let clock = Rc::new(RefCell::new(Clock::new(timestamps.into_iter().collect())));
+        let timestamps = data.timestamps().to_vec();
+        let clock = Rc::new(RefCell::new(Clock::new(timestamps)));
         let cache = Rc::new(RefCell::new(MarketDataCache::default()));
         let data = Rc::new(RefCell::new(data));
         Self { clock, cache, data }
@@ -65,6 +62,10 @@ impl Market {
 
     pub fn warmup(&mut self, periods: usize) {
         self.clock.borrow_mut().warmup(periods)
+    }
+
+    pub fn ticks_remaining(&self) -> usize {
+        self.clock.borrow().ticks_remaining()
     }
 
     pub(crate) fn get_current_price(&self, ticker: &str) -> Option<Decimal> {
@@ -100,8 +101,8 @@ impl Market {
         F: Fn(Vec<&Aggregate>) -> T,
     {
         let data = self.data.borrow();
-        let timeseries = data.prices.get(ticker)?;
-        let data = timeseries.range(start..end).map(|(_, v)| v).collect();
+        let timeseries = data.get_timeseries(ticker, Some(*start), Some(*end));
+        let data = timeseries.filter_map(|(_, a)| a.as_ref()).collect();
         Some(f(data))
     }
 
@@ -132,10 +133,8 @@ impl Market {
     pub(crate) fn tick(&self) {
         self.clock.borrow_mut().tick();
         let data = self.data.borrow();
-        let data: Vec<(&str, Option<&Aggregate>)> = data
-            .prices
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.get(self.clock.borrow().datetime().unwrap())))
+        let data: Vec<(&str, &Option<Aggregate>)> = data
+            .get_timestamp(*self.clock.borrow().datetime().unwrap())
             .collect();
         for (ticker, agg) in data {
             if let Some(agg) = agg {

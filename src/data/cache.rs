@@ -99,14 +99,15 @@ impl<T: DataProvider + Send + Sync> DataCache for FileDataCache<T> {
         if self.is_cache_valid(meta) {
             path.push("prices.data");
             let bytes = std::fs::read(path)?;
-            let mut data: MarketData = rmp_serde::from_slice(&bytes)?;
-            data.prices
-                .retain(|ticker, _| meta.tickers.contains(ticker));
-            data.prices.values_mut().for_each(|timeseries| {
-                timeseries.retain(|dt, _| {
-                    dt.naive_utc().date() > meta.start && dt.naive_utc().date() <= meta.end
-                })
-            });
+            let data: MarketData = rmp_serde::from_slice(&bytes)?;
+            // TODO: Filter data
+            //data.tickers
+            //    .retain(|ticker, _| meta.tickers.contains(ticker));
+            //data.prices.values_mut().for_each(|timeseries| {
+            //    timeseries.retain(|dt, _| {
+            //        dt.naive_utc().date() > meta.start && dt.naive_utc().date() <= meta.end
+            //    })
+            //});
             Ok(data)
         } else {
             std::fs::create_dir_all(path.clone())?;

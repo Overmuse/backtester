@@ -37,6 +37,17 @@ impl Clock {
         }
     }
 
+    pub fn ticks_remaining(&self) -> usize {
+        let state_ticks = match self.state() {
+            MarketState::PreOpen => 4,
+            MarketState::Opening => 3,
+            MarketState::Open => 2,
+            MarketState::Closing => 1,
+            MarketState::Closed => 0,
+        };
+        self.timestamps.len() - self.idx + state_ticks
+    }
+
     pub fn previous_datetime(&self) -> Option<&DateTime<Utc>> {
         if self.idx == 0 {
             None

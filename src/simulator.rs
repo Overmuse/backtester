@@ -3,6 +3,7 @@ use crate::markets::{clock::MarketState, market::Market};
 use crate::statistics::Statistics;
 use crate::strategy::Strategy;
 use chrono::{DateTime, Utc};
+use indicatif::{ProgressBar, ProgressStyle};
 use log::trace;
 use std::sync::mpsc::Receiver;
 
@@ -32,6 +33,13 @@ impl<S: Strategy> Simulator<S> {
 impl<S: Strategy> Simulator<S> {
     pub fn run(&mut self) -> Result<(), S::Error> {
         self.strategy.initialize();
+        let progress = ProgressBar::new(self.market.ticks_remaining() as u64)
+            .with_message("Backtesting")
+            .with_style(
+                ProgressStyle::default_bar()
+                    .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
+                    .progress_chars("##-"),
+            );
         while !self.market.is_done() {
             let datetime = self.market.datetime();
             let state = self.market.state();
@@ -61,7 +69,9 @@ impl<S: Strategy> Simulator<S> {
             trace!("Equity: {:.2}", equity);
             self.statistics.record_equity(datetime, equity);
             self.market.tick();
+            progress.inc(1);
         }
+        progress.finish();
         self.generate_report();
         Ok(())
     }

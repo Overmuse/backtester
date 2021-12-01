@@ -49,9 +49,13 @@ impl DataProvider for PolygonDownloader {
                 .await;
             map.insert(ticker.to_string(), prices);
         }
-        Ok(MarketData {
-            prices: map,
-            resolution: meta.resolution,
-        })
+
+        let mut data = MarketData::new(meta.tickers.clone(), map, meta.resolution);
+
+        if meta.normalize {
+            data.normalize_data()
+        }
+
+        Ok(data)
     }
 }

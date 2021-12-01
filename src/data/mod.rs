@@ -3,7 +3,7 @@ use chrono::{DateTime, NaiveDate, NaiveTime, TimeZone, Utc};
 use chrono_tz::US::Eastern;
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 pub use cache::FileCache;
 mod cache;
@@ -22,6 +22,7 @@ pub struct DataOptions {
     start: NaiveDate,
     end: NaiveDate,
     resolution: Resolution,
+    normalize: bool,
 }
 
 impl DataOptions {
@@ -31,11 +32,17 @@ impl DataOptions {
             start,
             end,
             resolution: Resolution::Day,
+            normalize: false,
         }
     }
 
     pub fn resolution(mut self, resolution: Resolution) -> Self {
         self.resolution = resolution;
+        self
+    }
+
+    pub fn normalize(mut self, normalize: bool) -> Self {
+        self.normalize = normalize;
         self
     }
 }
@@ -70,23 +77,106 @@ impl<T: TimeZone> MarketTimeExt for DateTime<T> {
     }
 }
 
-type PriceData = HashMap<String, BTreeMap<DateTime<Utc>, Aggregate>>;
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MarketData {
-    pub prices: PriceData,
-    pub resolution: Resolution,
+    timestamps: Vec<DateTime<Utc>>,
+    tickers: Vec<String>,
+    /// Row-major array with rows = dates and colums = tickers
+    data: Vec<Vec<Option<Aggregate>>>,
+    resolution: Resolution,
 }
 
 impl MarketData {
-    pub fn normalize_data(&mut self) {
-        self.prices.values_mut().for_each(|v| {
-            v.retain(|d, _| {
-                let dt_tz = d.with_timezone(&Eastern);
-                (dt_tz.time() >= NaiveTime::from_hms(9, 30, 0))
-                    && (dt_tz.time() < NaiveTime::from_hms(16, 0, 0))
-            });
+    pub fn new(
+        tickers: Vec<String>,
+        mut raw_data: HashMap<String, BTreeMap<DateTime<Utc>, Aggregate>>,
+        resolution: Resolution,
+    ) -> Self {
+        let timestamps: BTreeSet<DateTime<Utc>> =
+            raw_data.values().flatten().map(|x| *x.0).collect();
+        let mut data: Vec<Vec<Option<Aggregate>>> = Vec::with_capacity(timestamps.len());
+        timestamps
+            .iter()
+            .for_each(|_| data.push(Vec::with_capacity(tickers.len())));
+        for ticker in tickers.iter() {
+            let ticker_data = raw_data.get_mut(ticker).unwrap();
+            for (i, t) in timestamps.iter().enumerate() {
+                data[i].push(ticker_data.remove(t))
+            }
+        }
+        Self {
+            timestamps: timestamps.into_iter().collect(),
+            tickers,
+            data,
+            resolution,
+        }
+    }
+    pub fn timestamps(&self) -> &[DateTime<Utc>] {
+        &self.timestamps
+    }
+
+    pub fn tickers(&self) -> &[String] {
+        &self.tickers
+    }
+
+    pub fn resolution(&self) -> Resolution {
+        self.resolution
+    }
+
+    pub fn get_timestamp(
+        &self,
+        timestamp: DateTime<Utc>,
+    ) -> impl Iterator<Item = (&str, &Option<Aggregate>)> {
+        let idx = self
+            .timestamps
+            .iter()
+            .position(|d| *d == timestamp)
+            .unwrap();
+        self.tickers
+            .iter()
+            .map(String::as_str)
+            .zip(self.data.get(idx).unwrap())
+    }
+
+    pub fn get_timeseries(
+        &self,
+        ticker: &str,
+        start: Option<DateTime<Utc>>,
+        end: Option<DateTime<Utc>>,
+    ) -> impl Iterator<Item = (&DateTime<Utc>, &Option<Aggregate>)> {
+        let ticker_idx = self.tickers.iter().position(|t| t == ticker).unwrap();
+        let start_idx = start
+            .map(|d| self.timestamps.iter().position(|date| *date == d))
+            .flatten()
+            .unwrap_or(0);
+        let end_idx = end
+            .map(|d| self.timestamps.iter().position(|date| *date == d))
+            .flatten()
+            .unwrap_or(self.timestamps.len());
+        self.timestamps.iter().zip(
+            self.data
+                .get(start_idx..end_idx)
+                .unwrap()
+                .get(ticker_idx)
+                .unwrap(),
+        )
+    }
+
+    fn normalize_data(&mut self) {
+        let idx = self.timestamps.iter().map(|t| {
+            let dt_tz = t.with_timezone(&Eastern);
+            (dt_tz.time() >= NaiveTime::from_hms(9, 30, 0))
+                && (dt_tz.time() < NaiveTime::from_hms(16, 0, 0))
         });
+        let (new_data, new_timestamps) = self
+            .data
+            .iter()
+            .zip(self.timestamps.clone())
+            .zip(idx)
+            .filter_map(|((r, t), i)| if i { Some((r.clone(), t)) } else { None })
+            .unzip();
+        self.data = new_data;
+        self.timestamps = new_timestamps;
     }
 }
 
