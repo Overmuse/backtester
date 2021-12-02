@@ -30,24 +30,39 @@ impl DataProvider for PolygonDownloader {
             Resolution::Minute => Timespan::Minute,
         };
         let mut map: HashMap<String, BTreeMap<DateTime<Utc>, Aggregate>> = HashMap::new();
-        for ticker in &meta.tickers {
-            let query = GetAggregate::new(
-                ticker,
-                meta.start.and_hms(0, 0, 0),
-                meta.end.and_hms(0, 0, 0),
-            )
-            .timespan(timespan)
-            .limit(50000);
-
-            let prices: BTreeMap<DateTime<Utc>, Aggregate> = client
-                .send_paginated(&query)
-                .map_ok(|x| x.results)
-                .try_flatten_iters()
-                .filter_map(|x| async { x.ok() })
-                .map(|agg| (agg.t, From::from(agg)))
-                .collect()
-                .await;
-            map.insert(ticker.to_string(), prices);
+        for ticker in meta.tickers.clone() {
+            map.insert(ticker, BTreeMap::new());
+        }
+        let queries: Vec<_> = meta
+            .tickers
+            .iter()
+            .map(|ticker| {
+                GetAggregate::new(
+                    ticker,
+                    meta.start.and_hms(0, 0, 0),
+                    meta.end.and_hms(0, 0, 0),
+                )
+                .timespan(timespan)
+                .limit(50000)
+            })
+            .collect();
+        let streams = queries
+            .iter()
+            .zip(meta.tickers.clone())
+            .map(|(query, ticker)| {
+                Box::pin(
+                    client
+                        .send_paginated(query)
+                        .map_ok(|x| x.results)
+                        .try_flatten_iters()
+                        .filter_map(|x| async { x.ok() })
+                        .map(move |agg| (ticker.clone(), agg.t, From::from(agg))),
+                )
+            });
+        let results: Vec<(String, DateTime<Utc>, Aggregate)> =
+            futures::stream::select_all(streams).collect().await;
+        for (ticker, t, agg) in results {
+            map.get_mut(&ticker).unwrap().insert(t, agg);
         }
 
         let mut data = MarketData::new(meta.tickers.clone(), map, meta.resolution);
