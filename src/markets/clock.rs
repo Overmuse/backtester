@@ -1,4 +1,13 @@
-use chrono::{DateTime, Utc};
+use crate::data::Resolution;
+use crate::utils::nyse_calendar::NyseCalendar;
+use bdays::{HolidayCalendar, HolidayCalendarCache};
+use chrono::{DateTime, Duration, Local, NaiveDate, NaiveTime, TimeZone};
+use chrono_tz::{Tz, US::Eastern};
+
+lazy_static! {
+    static ref OPENING_TIME: NaiveTime = NaiveTime::from_hms(9, 30, 0);
+    static ref CLOSING_TIME: NaiveTime = NaiveTime::from_hms(16, 0, 0);
+}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum MarketState {
@@ -22,54 +31,127 @@ impl MarketState {
 }
 
 #[derive(Clone)]
-pub(crate) struct Clock {
-    idx: usize,
+struct ClockOptions {
+    start: NaiveDate,
+    end: NaiveDate,
+    warmup: Duration,
+    resolution: Resolution,
+}
+
+pub struct Clock {
+    datetime: DateTime<Tz>,
     market_state: MarketState,
-    timestamps: Vec<DateTime<Utc>>,
+    calendar: HolidayCalendarCache<NaiveDate>,
+    options: ClockOptions,
 }
 
 impl Clock {
-    pub fn new(timestamps: Vec<DateTime<Utc>>) -> Self {
-        Self {
-            idx: 0,
-            market_state: MarketState::PreOpen,
-            timestamps,
+    pub fn new(
+        mut start: NaiveDate,
+        end: NaiveDate,
+        warmup: Duration,
+        resolution: Resolution,
+    ) -> Self {
+        let calendar = HolidayCalendarCache::new(NyseCalendar, start, end);
+        if !calendar.is_bday(start) {
+            start = calendar.advance_bdays(start, 1);
         }
-    }
-
-    pub fn ticks_remaining(&self) -> usize {
-        let state_ticks = match self.state() {
-            MarketState::PreOpen => 4,
-            MarketState::Opening => 3,
-            MarketState::Open => 2,
-            MarketState::Closing => 1,
-            MarketState::Closed => 0,
+        let datetime = Local
+            .from_local_datetime(&start.and_time(*OPENING_TIME))
+            .unwrap()
+            .with_timezone(&Eastern)
+            + warmup;
+        let options = ClockOptions {
+            start,
+            end,
+            warmup,
+            resolution,
         };
-        self.timestamps.len() - self.idx + state_ticks
-    }
-
-    pub fn previous_datetime(&self) -> Option<&DateTime<Utc>> {
-        if self.idx == 0 {
-            None
-        } else {
-            self.timestamps.get(self.idx - 1)
+        Self {
+            datetime,
+            market_state: MarketState::PreOpen,
+            calendar,
+            options,
         }
     }
 
-    pub fn datetime(&self) -> Option<&DateTime<Utc>> {
-        self.timestamps.get(self.idx)
+    pub fn simulation_periods(&self) -> i32 {
+        let days = self
+            .calendar
+            .bdays(self.datetime.date().naive_local(), self.options.end);
+        match self.options.resolution {
+            Resolution::Day => days * 5,
+            Resolution::Minute => days * 395,
+        }
     }
 
-    pub fn next_datetime(&self) -> Option<&DateTime<Utc>> {
-        self.timestamps.get(self.idx + 1)
+    pub fn is_done(&self) -> bool {
+        (self.datetime.date().naive_local() >= self.options.end)
+            && self.market_state == MarketState::Closed
+    }
+
+    pub fn is_start_of_day(&self) -> bool {
+        match self.options.resolution {
+            Resolution::Minute => self.datetime.time() == *OPENING_TIME,
+            // Since there's only one tick per day, it's always the end of the day
+            Resolution::Day => true,
+        }
+    }
+
+    pub fn is_end_of_day(&self) -> bool {
+        // TODO: Fix for early closing time
+        match self.options.resolution {
+            Resolution::Minute => self.datetime.time() == *CLOSING_TIME,
+            // Since there's only one tick per day, it's always the end of the day
+            Resolution::Day => true,
+        }
+    }
+
+    pub fn previous_datetime(&self) -> DateTime<Tz> {
+        if self.is_start_of_day() {
+            Local
+                .from_local_datetime(
+                    &self
+                        .calendar
+                        .advance_bdays(self.datetime.date().naive_local(), -1)
+                        // TODO: Fix for early closing time
+                        .and_time(*CLOSING_TIME),
+                )
+                .unwrap()
+                .with_timezone(&Eastern)
+        } else {
+            match self.options.resolution {
+                Resolution::Minute => self.datetime - Duration::minutes(1),
+                Resolution::Day => unreachable!(),
+            }
+        }
+    }
+
+    pub fn datetime(&self) -> DateTime<Tz> {
+        self.datetime
+    }
+
+    pub fn next_datetime(&self) -> DateTime<Tz> {
+        if self.is_end_of_day() {
+            Local
+                .from_local_datetime(
+                    &self
+                        .calendar
+                        .advance_bdays(self.datetime.date().naive_local(), 1)
+                        .and_time(*OPENING_TIME),
+                )
+                .unwrap()
+                .with_timezone(&Eastern)
+        } else {
+            match self.options.resolution {
+                Resolution::Minute => self.datetime + Duration::minutes(1),
+                Resolution::Day => unreachable!(),
+            }
+        }
     }
 
     pub fn state(&self) -> MarketState {
         self.market_state
-    }
-
-    pub fn is_done(&self) -> bool {
-        (self.idx == (self.timestamps.len() - 1)) && self.state() == MarketState::Closed
     }
 
     pub fn is_open(&self) -> bool {
@@ -79,32 +161,36 @@ impl Clock {
         }
     }
 
-    pub fn warmup(&mut self, periods: usize) {
-        self.idx += periods
-    }
-
     pub fn tick(&mut self) {
-        let datetime = match self.datetime() {
-            Some(datetime) => datetime,
-            None => return,
-        };
-        let next_datetime = self.next_datetime();
+        if self.is_done() {
+            panic!("Market clock ticked after end of backtest");
+        }
+
         let state = &self.market_state;
-        if let Some(next_datetime) = next_datetime {
-            if datetime.date() != next_datetime.date() {
-                if let MarketState::Closed = state {
-                    self.idx += 1
-                }
-                self.market_state = state.next();
-            } else {
-                match state {
-                    MarketState::PreOpen | MarketState::Opening => self.market_state = state.next(),
-                    _ => self.idx += 1,
-                }
+
+        if self.is_end_of_day() {
+            if let MarketState::Closed = state {
+                self.datetime = Local
+                    .from_local_datetime(
+                        &(self
+                            .calendar
+                            .advance_bdays(self.datetime.date().naive_local(), 1))
+                        .and_time(*OPENING_TIME),
+                    )
+                    .unwrap()
+                    .with_timezone(&Eastern);
             }
-        } else if let MarketState::Closed = state {
-        } else {
             self.market_state = state.next();
+        } else {
+            match state {
+                MarketState::PreOpen | MarketState::Opening => self.market_state = state.next(),
+                _ => match self.options.resolution {
+                    Resolution::Minute => self.datetime = self.datetime + Duration::minutes(1),
+                    // We should never reach the below as `self.is_end_of_day` should always be
+                    // true for daily resolution
+                    Resolution::Day => unreachable!(),
+                },
+            }
         }
     }
 }
@@ -116,9 +202,20 @@ mod test {
 
     #[test]
     fn it_can_tell_and_update_time() {
-        let mut clock = Clock::new(vec![Utc::now(), Utc::now() + Duration::days(1)]);
-        assert!(clock.datetime().is_some());
-        assert!(clock.next_datetime().is_some());
+        let mut clock = Clock::new(
+            NaiveDate::from_ymd(2021, 1, 1),
+            NaiveDate::from_ymd(2021, 12, 31),
+            Duration::zero(),
+            Resolution::Day,
+        );
+        assert_eq!(
+            clock.datetime().naive_local(),
+            NaiveDate::from_ymd(2021, 1, 5).and_hms(9, 30, 0)
+        );
+        assert_eq!(
+            clock.next_datetime().naive_local(),
+            NaiveDate::from_ymd(2021, 1, 6).and_hms(9, 30, 0)
+        );
 
         assert_eq!(clock.state(), MarketState::PreOpen);
         assert!(!clock.is_open());
@@ -141,19 +238,24 @@ mod test {
 
         clock.tick();
         assert_eq!(clock.state(), MarketState::PreOpen);
-        assert!(clock.next_datetime().is_none());
     }
 
     #[test]
     fn it_works_for_intraday_data() {
-        let mut clock = Clock::new(vec![
-            Utc::now(),
-            Utc::now() + Duration::minutes(1),
-            Utc::now() + Duration::days(1),
-            Utc::now() + Duration::days(1) + Duration::minutes(1),
-        ]);
-        assert!(clock.datetime().is_some());
-        assert!(clock.next_datetime().is_some());
+        let mut clock = Clock::new(
+            NaiveDate::from_ymd(2021, 1, 1),
+            NaiveDate::from_ymd(2021, 12, 31),
+            Duration::zero(),
+            Resolution::Minute,
+        );
+        assert_eq!(
+            clock.datetime().naive_local(),
+            NaiveDate::from_ymd(2021, 1, 5).and_hms(9, 30, 0)
+        );
+        assert_eq!(
+            clock.next_datetime().naive_local(),
+            NaiveDate::from_ymd(2021, 1, 5).and_hms(9, 31, 0)
+        );
 
         assert_eq!(clock.state(), MarketState::PreOpen);
         assert!(!clock.is_open());
@@ -162,13 +264,11 @@ mod test {
         assert_eq!(clock.state(), MarketState::Opening);
         assert!(clock.is_open());
 
-        clock.tick();
-        assert_eq!(clock.state(), MarketState::Open);
-        assert!(clock.is_open());
-
-        clock.tick();
-        assert_eq!(clock.state(), MarketState::Open);
-        assert!(clock.is_open());
+        for _ in 0..391 {
+            clock.tick();
+            assert_eq!(clock.state(), MarketState::Open);
+            assert!(clock.is_open());
+        }
 
         clock.tick();
         assert_eq!(clock.state(), MarketState::Closing);
@@ -189,17 +289,5 @@ mod test {
         clock.tick();
         assert_eq!(clock.state(), MarketState::Open);
         assert!(clock.is_open());
-
-        clock.tick();
-        assert_eq!(clock.state(), MarketState::Open);
-        assert!(clock.is_open());
-
-        clock.tick();
-        assert_eq!(clock.state(), MarketState::Closing);
-        assert!(clock.is_open());
-
-        clock.tick();
-        assert_eq!(clock.state(), MarketState::Closed);
-        assert!(!clock.is_open());
     }
 }

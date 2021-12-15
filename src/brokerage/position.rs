@@ -1,4 +1,5 @@
-use chrono::{DateTime, Utc};
+use chrono::DateTime;
+use chrono_tz::Tz;
 use num_traits::Signed;
 use rust_decimal::prelude::*;
 use std::collections::VecDeque;
@@ -6,7 +7,7 @@ use std::fmt;
 
 #[derive(Clone, Debug)]
 pub struct Lot {
-    pub fill_time: DateTime<Utc>,
+    pub fill_time: DateTime<Tz>,
     pub price: Decimal,
     pub quantity: Decimal,
 }
@@ -102,6 +103,8 @@ impl Position {
 #[cfg(test)]
 mod test {
     use super::*;
+    use chrono::Utc;
+    use chrono_tz::US::Eastern;
 
     #[test]
     fn it_can_do_fifo_lot_aggregation() {
@@ -109,7 +112,7 @@ mod test {
         let mut position = Position::new(
             "AAPL".to_string(),
             Lot {
-                fill_time: Utc::now(),
+                fill_time: Utc::now().with_timezone(&Eastern),
                 price,
                 quantity: Decimal::new(2, 0),
             },
@@ -122,7 +125,7 @@ mod test {
 
         price = Decimal::new(150, 0);
         position.add_lot(Lot {
-            fill_time: Utc::now(),
+            fill_time: Utc::now().with_timezone(&Eastern),
             price,
             quantity: Decimal::new(3, 0),
         });
@@ -134,7 +137,7 @@ mod test {
 
         price = Decimal::new(120, 0);
         position.add_lot(Lot {
-            fill_time: Utc::now(),
+            fill_time: Utc::now().with_timezone(&Eastern),
             price,
             quantity: Decimal::new(-1, 0),
         });
@@ -145,7 +148,7 @@ mod test {
         assert_eq!(position.unrealized_profit(price), Decimal::new(-70, 0));
 
         position.add_lot(Lot {
-            fill_time: Utc::now(),
+            fill_time: Utc::now().with_timezone(&Eastern),
             price,
             quantity: Decimal::new(-3, 0),
         });
@@ -156,7 +159,7 @@ mod test {
         assert_eq!(position.unrealized_profit(price), Decimal::new(-30, 0));
 
         position.add_lot(Lot {
-            fill_time: Utc::now(),
+            fill_time: Utc::now().with_timezone(&Eastern),
             price,
             quantity: Decimal::new(-3, 0),
         });
@@ -168,7 +171,7 @@ mod test {
 
         price = Decimal::new(80, 0);
         position.add_lot(Lot {
-            fill_time: Utc::now(),
+            fill_time: Utc::now().with_timezone(&Eastern),
             price,
             quantity: Decimal::new(2, 0),
         });

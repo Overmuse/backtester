@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate lazy_static;
+
 mod brokerage;
 pub mod data;
 pub mod finance;
@@ -5,20 +8,23 @@ mod markets;
 mod simulator;
 pub mod statistics;
 mod strategy;
+mod utils;
 
 pub use brokerage::{
-    order::{Order, OrderType},
-    Brokerage, OrderStatus,
+    actor::Event,
+    handle::Brokerage,
+    order::{Order, OrderStatus, OrderType},
 };
-pub use markets::{clock::MarketState, market::Market};
+pub use markets::{clock::MarketState, handle::Market};
 pub use simulator::Simulator;
 pub use strategy::Strategy;
 
 pub mod prelude {
-    pub use crate::data::{DataOptions, DataProvider, FileCache, MarketTimeExt};
+    pub use crate::data::{provider::DataProvider, DataOptions, MarketTimeExt};
+    // pub use crate::data::FileCache;
     pub use crate::{
-        brokerage::{order::Order, Brokerage},
-        markets::market::Market,
+        brokerage::{handle::Brokerage, order::Order},
+        markets::handle::Market,
         simulator::Simulator,
         strategy::Strategy,
     };

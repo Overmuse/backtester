@@ -1,7 +1,7 @@
 use anyhow::Result;
-use backtester::data::downloader::polygon::PolygonDownloader;
+use async_trait::async_trait;
+use backtester::data::provider::polygon::PolygonDownloader;
 use backtester::data::Resolution;
-use backtester::finance::commission::PerDollarCommission;
 use backtester::prelude::*;
 use chrono::NaiveDate;
 use dotenv::dotenv;
@@ -10,26 +10,29 @@ use rust_decimal::Decimal;
 
 struct Strat;
 
+#[async_trait]
 impl Strategy for Strat {
     type Error = anyhow::Error;
 
-    fn at_open(&mut self, brokerage: &mut Brokerage, market: &Market) -> Result<(), Self::Error> {
-        let e = market.get_last_price("E");
-        let m = market.get_last_price("M");
+    async fn at_open(&mut self, brokerage: Brokerage, market: Market) -> Result<(), Self::Error> {
+        let e = market.get_last_price("E").await;
+        let m = market.get_last_price("M").await;
+        let equity = Decimal::new(10000, 0);
         if let (Some(e), Some(m)) = (e, m) {
-            let amount = if random::<bool>() {
-                Decimal::ONE
-            } else {
-                -Decimal::ONE
-            };
+            let amount = if random::<bool>() { equity } else { -equity };
 
             let order = if e > m {
                 Order::new("E", amount).limit_price(e)
             } else {
                 Order::new("M", amount).limit_price(m)
             };
-            brokerage.send_order(order);
+            brokerage.send_order(order).await;
         }
+        Ok(())
+    }
+
+    async fn at_close(&mut self, brokerage: Brokerage, _: Market) -> Result<(), Self::Error> {
+        brokerage.close_positions().await;
         Ok(())
     }
 }
@@ -37,18 +40,13 @@ impl Strategy for Strat {
 #[tokio::main]
 async fn main() -> Result<()> {
     let _ = dotenv();
-    let downloader = PolygonDownloader.file_cache("data");
-    let meta = DataOptions::new(
+    let downloader = PolygonDownloader;
+    let data_options = DataOptions::new(
         vec!["E".to_string(), "M".to_string()],
         NaiveDate::from_ymd(2020, 1, 1),
         NaiveDate::from_ymd(2020, 12, 31),
     )
-    .resolution(Resolution::Minute);
-    let mut data = downloader.download_data(&meta).await?;
-    data.normalize_data();
-    let market = Market::new(data);
-    let brokerage = Brokerage::new(Decimal::new(100000, 0), market)
-        .commission(PerDollarCommission::new(Decimal::new(1, 3)));
-    let mut simulator = Simulator::new(brokerage, Strat).verbose(true);
-    simulator.run()
+    .set_resolution(Resolution::Minute);
+    let simulator = Simulator::new(Decimal::new(100000, 0), Strat, downloader, data_options);
+    simulator.run().await
 }

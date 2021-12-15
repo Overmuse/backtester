@@ -1,5 +1,7 @@
-use crate::brokerage::{Event, OrderStatus};
-use chrono::{DateTime, Utc};
+use crate::brokerage::actor::Event;
+use crate::brokerage::order::OrderStatus;
+use chrono::DateTime;
+use chrono_tz::Tz;
 use rust_decimal::Decimal;
 use std::fmt;
 
@@ -56,7 +58,7 @@ Expired:   {:>digits$}
 pub struct Statistics {
     order_counts: OrderCounts,
     commission_paid: Decimal,
-    pub equity: Vec<(DateTime<Utc>, Decimal)>,
+    pub equity: Vec<(DateTime<Tz>, Decimal)>,
     pub event_log: Vec<Event>,
 }
 
@@ -85,7 +87,7 @@ impl Statistics {
         }
     }
 
-    pub fn record_equity(&mut self, datetime: DateTime<Utc>, equity: Decimal) {
+    pub fn record_equity(&mut self, datetime: DateTime<Tz>, equity: Decimal) {
         self.equity.push((datetime, equity));
     }
 

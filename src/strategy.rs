@@ -1,44 +1,46 @@
-use crate::brokerage::{Brokerage, Event};
-use crate::markets::market::Market;
+use crate::brokerage::actor::Event;
+use crate::brokerage::handle::Brokerage;
+use crate::markets::handle::Market;
 
+#[async_trait::async_trait]
 #[allow(unused_variables)]
 pub trait Strategy {
     type Error;
 
-    fn initialize(&mut self) {}
+    async fn initialize(&mut self) {}
 
-    fn before_open(
+    async fn before_open(
         &mut self,
-        brokerage: &mut Brokerage,
-        market: &Market,
+        brokerage: Brokerage,
+        market: Market,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
 
-    fn on_event(&mut self, event: Event) -> Result<(), Self::Error> {
+    async fn on_event(&mut self, event: Event) -> Result<(), Self::Error> {
         Ok(())
     }
 
-    fn at_open(&mut self, brokerage: &mut Brokerage, market: &Market) -> Result<(), Self::Error> {
+    async fn at_open(&mut self, brokerage: Brokerage, market: Market) -> Result<(), Self::Error> {
         Ok(())
     }
 
-    fn during_regular_hours(
+    async fn during_regular_hours(
         &mut self,
-        brokerage: &mut Brokerage,
-        market: &Market,
+        brokerage: Brokerage,
+        market: Market,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
 
-    fn at_close(&mut self, brokerage: &mut Brokerage, market: &Market) -> Result<(), Self::Error> {
+    async fn at_close(&mut self, brokerage: Brokerage, market: Market) -> Result<(), Self::Error> {
         Ok(())
     }
 
-    fn after_close(
+    async fn after_close(
         &mut self,
-        brokerage: &mut Brokerage,
-        market: &Market,
+        brokerage: Brokerage,
+        market: Market,
     ) -> Result<(), Self::Error> {
         Ok(())
     }

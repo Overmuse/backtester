@@ -1,4 +1,4 @@
-use super::{error::Error, DataOptions, DataProvider, MarketData};
+use super::{error::Error, provider::DataProvider, DataOptions, MarketData};
 use async_trait::async_trait;
 use std::fs::OpenOptions;
 use std::io::prelude::*;

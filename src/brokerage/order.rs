@@ -1,7 +1,31 @@
+use chrono::DateTime;
+use chrono_tz::Tz;
 use rust_decimal::Decimal;
+use serde::Serialize;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OrderStatus {
+    Submitted,
+    Cancelled,
+    Filled {
+        fill_time: DateTime<Tz>,
+        average_fill_price: Decimal,
+    },
+    PartiallyFilled,
+    Rejected,
+    Expired,
+}
+
+#[derive(Debug)]
+pub struct BrokerageOrder {
+    status: OrderStatus,
+    order: Order,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum OrderType {
     Market,
     Limit(Decimal),
@@ -9,7 +33,7 @@ pub enum OrderType {
     StopLimit(Decimal, Decimal),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Order {
     pub id: Uuid,
     pub ticker: String,
