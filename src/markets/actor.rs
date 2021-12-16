@@ -4,17 +4,16 @@ use crate::markets::data_manager::DataManager;
 use crate::markets::handle::*;
 use chrono::prelude::*;
 use chrono_tz::Tz;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 use rust_decimal::Decimal;
-use tokio::sync::mpsc::{error::TryRecvError, unbounded_channel, UnboundedReceiver};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 use tokio::sync::oneshot::Sender as OneshotSender;
-use tokio::sync::RwLock;
 use tracing::debug;
 
 pub(crate) struct MarketActor {
     requests: UnboundedReceiver<(OneshotSender<MarketResponse>, MarketRequest)>,
-    data_manager: RwLock<DataManager>,
-    clock: RwLock<Clock>,
+    data_manager: DataManager,
+    clock: Clock,
     progress: ProgressBar,
 }
 
@@ -29,21 +28,15 @@ impl MarketActor {
             data_options.warmup,
             data_options.resolution,
         );
-        let progress = ProgressBar::new(clock.simulation_periods() as u64)
-            .with_message("Simulating")
-            .with_style(
-                ProgressStyle::default_bar()
-                    .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
-                    .progress_chars("##-"),
-            );
-        let data_manager = RwLock::new(DataManager::new(data_provider, data_options));
+        let progress = crate::utils::progress(clock.simulation_periods() as u64, "Simulating");
+        let data_manager = DataManager::new(data_provider, data_options);
         let (tx, rx) = unbounded_channel();
         let handle = Market::new(tx);
 
         let actor = Self {
             requests: rx,
             data_manager,
-            clock: RwLock::new(clock),
+            clock,
             progress,
         };
         tokio::spawn(async move { actor.run_forever().await });
@@ -51,31 +44,17 @@ impl MarketActor {
     }
 
     async fn run_forever(mut self) {
-        loop {
-            match self.requests.try_recv() {
-                Ok((tx, request)) => {
-                    debug!("Received request: {:?}", request);
-                    let response = self.handle_message(request).await;
-                    tx.send(response).unwrap()
-                }
-                Err(TryRecvError::Empty) => {
-                    // No current message, let's download some data!
-                    // if !self.data_manager.read().await.is_done_downloading() {
-                    //     trace!("No outstanding requests, downloading data");
-                    //     self.data_manager.write().await.process_download_job().await;
-                    //     trace!("Finished downloading data");
-                    // }
-                }
-                Err(TryRecvError::Disconnected) => {
-                    debug!("No listeners remain, disconnecting");
-                    return;
-                }
-            }
-            tokio::task::yield_now().await
+        self.data_manager.download_data().await;
+        self.progress.reset();
+        while let Some((tx, request)) = self.requests.recv().await {
+            debug!("Received request: {:?}", request);
+            let response = self.handle_message(request).await;
+            tx.send(response).unwrap()
         }
+        debug!("No listeners remain, disconnecting");
     }
 
-    async fn handle_message(&self, request: MarketRequest) -> MarketResponse {
+    async fn handle_message(&mut self, request: MarketRequest) -> MarketResponse {
         match request {
             MarketRequest::Data { ticker, start, end } => {
                 let data = self.get_data(&ticker, start, end).await;
@@ -114,8 +93,6 @@ impl MarketActor {
     async fn get_current_price(&self, ticker: &str) -> Option<Decimal> {
         let datetime = self.datetime().await;
         self.data_manager
-            .write()
-            .await
             .get_last_before(ticker, datetime)
             .map(|x| x.close)
     }
@@ -132,23 +109,19 @@ impl MarketActor {
         start: DateTime<Tz>,
         end: DateTime<Tz>,
     ) -> Option<Vec<Aggregate>> {
-        self.data_manager
-            .write()
-            .await
-            .get_data(ticker, start, end)
-            .await
+        self.data_manager.get_data(ticker, start, end).await
     }
 
     async fn datetime(&self) -> DateTime<Tz> {
-        self.clock.read().await.datetime()
+        self.clock.datetime()
     }
 
     async fn state(&self) -> MarketState {
-        self.clock.read().await.state()
+        self.clock.state()
     }
 
     async fn is_done(&self) -> bool {
-        if self.clock.read().await.is_done() {
+        if self.clock.is_done() {
             self.progress.finish();
             true
         } else {
@@ -157,19 +130,19 @@ impl MarketActor {
     }
 
     async fn is_open(&self) -> bool {
-        self.clock.read().await.is_open()
+        self.clock.is_open()
     }
 
     async fn previous_datetime(&self) -> DateTime<Tz> {
-        self.clock.read().await.previous_datetime()
+        self.clock.previous_datetime()
     }
 
     async fn next_datetime(&self) -> DateTime<Tz> {
-        self.clock.read().await.next_datetime()
+        self.clock.next_datetime()
     }
 
-    async fn tick(&self) {
-        self.clock.write().await.tick();
+    async fn tick(&mut self) {
+        self.clock.tick();
         self.progress.inc(1);
     }
 }

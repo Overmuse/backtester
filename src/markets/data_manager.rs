@@ -3,11 +3,9 @@ use crate::markets::cache::MarketDataCache;
 use crate::utils::last_day_of_month;
 use chrono::prelude::*;
 use chrono_tz::Tz;
-use indicatif::{ProgressBar, ProgressStyle};
+use futures::{stream, StreamExt};
 use itertools::Itertools;
-use priority_queue::PriorityQueue;
-use std::collections::HashMap;
-use tracing::{debug, trace};
+use tracing::error;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct DownloadJob {
@@ -20,10 +18,7 @@ pub struct DownloadJob {
 pub struct DataManager {
     cache: MarketDataCache,
     data_provider: Box<dyn DataProvider + Send + Sync>,
-    data_options: DataOptions,
-    download_jobs: PriorityQueue<DownloadJob, usize>,
-    date_ranges: HashMap<String, (NaiveDate, NaiveDate)>,
-    progress: ProgressBar,
+    download_jobs: Vec<DownloadJob>,
 }
 
 impl DataManager {
@@ -31,123 +26,68 @@ impl DataManager {
         data_provider: D,
         data_options: DataOptions,
     ) -> Self {
-        let mut download_jobs = PriorityQueue::new();
-        let mut jobs = build_date_range(
+        let download_jobs = build_date_range(
             data_options.start,
             data_options.end,
             data_options.resolution,
-        );
-        // Reverse to give earlier jobs higher priority
-        jobs.reverse();
-        let jobs = jobs
-            .into_iter()
-            // Enumerate to be given a priority
-            .enumerate()
-            // Only do cartesian product after enumerating so each ticker has same priority
-            .cartesian_product(data_options.tickers.iter())
-            .map(|((priority, (start, end)), ticker)| {
-                (
-                    priority,
-                    DownloadJob {
-                        ticker: ticker.to_string(),
-                        start,
-                        end,
-                        resolution: data_options.resolution,
-                    },
-                )
-            });
-        for (priority, job) in jobs {
-            download_jobs.push(job, priority);
-        }
+        )
+        .into_iter()
+        .cartesian_product(data_options.tickers.iter())
+        .map(|((start, end), ticker)| DownloadJob {
+            ticker: ticker.to_string(),
+            start,
+            end,
+            resolution: data_options.resolution,
+        })
+        .collect();
         let cache = MarketDataCache::new();
-        let date_ranges = HashMap::new();
-        let progress = ProgressBar::new(download_jobs.len() as u64)
-            .with_message("Downloading data")
-            .with_style(
-                ProgressStyle::default_bar()
-                    .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
-                    .progress_chars("##-"),
-            );
 
         Self {
             cache,
             data_provider: Box::new(data_provider),
-            data_options,
             download_jobs,
-            date_ranges,
-            progress,
         }
     }
 
-    pub fn is_done_downloading(&self) -> bool {
-        self.download_jobs.is_empty()
-    }
+    pub async fn download_data(&mut self) {
+        let jobs = self.download_jobs.clone();
+        let progress = crate::utils::progress(jobs.len() as u64, "Downloading data");
+        let data: Vec<(String, Vec<Aggregate>)> = stream::iter(jobs.into_iter())
+            .map(|job| {
+                let data_provider = &self.data_provider;
+                let progress = progress.clone();
+                async move {
+                    let data = data_provider
+                        .download_data(&job.ticker, job.start, job.end, job.resolution)
+                        .await;
+                    if let Err(ref e) = data {
+                        error!("{}", e);
+                    }
+                    let data = data.unwrap();
+                    progress.inc(1);
+                    (job.ticker, data)
+                }
+            })
+            .buffer_unordered(100)
+            .collect()
+            .await;
+        progress.finish();
 
-    pub fn has_data(&self, ticker: &str, start: DateTime<Tz>, end: DateTime<Tz>) -> bool {
-        if let Some((s, e)) = self.date_ranges.get(ticker) {
-            s <= &start.naive_local().date() && e >= &end.naive_local().date()
-        } else {
-            false
+        let progress = crate::utils::progress(data.len() as u64, "Storing data");
+        for (ticker, datum) in data.into_iter() {
+            self.cache.store_data(&ticker, datum);
+            progress.inc(1);
         }
+        progress.finish();
     }
 
     pub async fn get_data(
-        &mut self,
+        &self,
         ticker: &str,
         start: DateTime<Tz>,
         end: DateTime<Tz>,
     ) -> Option<Vec<Aggregate>> {
-        if !self.has_data(ticker, start, end) {
-            // We push the job to the queue rather than processing directly in order to
-            // override any existing priority
-            debug!("Data not yet downloaded. {}, {}-{}", ticker, start, end);
-            let date_ranges = build_date_range(
-                self.data_options.start,
-                self.data_options.end,
-                self.data_options.resolution,
-            );
-
-            for (start, end) in date_ranges {
-                let job = DownloadJob {
-                    ticker: ticker.to_string(),
-                    start,
-                    end,
-                    resolution: self.data_options.resolution,
-                };
-                self.download_jobs.push(job, usize::MAX);
-                self.process_download_job().await;
-            }
-        };
-        // Now the data should exist
         self.cache.get_data(ticker, start, end)
-    }
-
-    pub async fn process_job(&mut self, job: DownloadJob) {
-        let data = self
-            .data_provider
-            .download_data(&job.ticker, job.start, job.end, job.resolution)
-            .await
-            .unwrap();
-        self.cache.store_data(&job.ticker, data);
-        self.date_ranges
-            .entry(job.ticker.clone())
-            .and_modify(|(s, e)| {
-                if job.start < *s {
-                    *s = job.start
-                }
-                if job.end > *e {
-                    *e = job.end
-                }
-            })
-            .or_insert((job.start, job.end));
-        self.progress.inc(1);
-    }
-
-    pub async fn process_download_job(&mut self) {
-        if let Some((job, _)) = self.download_jobs.pop() {
-            trace!("Download job: {:?}", job);
-            self.process_job(job).await;
-        }
     }
 
     pub fn get_last_before(&self, ticker: &str, datetime: DateTime<Tz>) -> Option<Aggregate> {

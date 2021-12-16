@@ -6,6 +6,7 @@ use chrono_tz::US::Eastern;
 use futures::{StreamExt, TryStreamExt};
 use stream_flatten_iters::TryStreamExt as _;
 
+#[derive(Clone)]
 pub struct PolygonDownloader;
 
 impl From<PolygonAggregate> for Aggregate {
