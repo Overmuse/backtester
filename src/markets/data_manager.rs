@@ -177,7 +177,7 @@ fn build_date_range(
             range
         }
         Resolution::Minute => {
-            // Download up to a month's data at a time
+            // Download up to 4 month's data at a time
             let mut range = Vec::new();
             let first_date = NaiveDate::from_ymd(start.year(), start.month(), 1);
             let last_date = NaiveDate::from_ymd(
@@ -187,21 +187,29 @@ fn build_date_range(
             );
 
             let mut current_start = first_date;
-            let mut current_end = NaiveDate::from_ymd(
-                start.year(),
-                start.month(),
-                last_day_of_month(start.year(), start.month()),
-            );
+            let mut current_end = match start.month() {
+                9 | 10 | 11 | 12 => NaiveDate::from_ymd(
+                    start.year() + 1,
+                    (start.month() + 4) % 12,
+                    last_day_of_month(start.year() + 1, (start.month() + 4) % 12),
+                ),
+                _ => NaiveDate::from_ymd(
+                    start.year(),
+                    start.month(),
+                    last_day_of_month(start.year(), start.month()),
+                ),
+            };
             range.push((current_start, current_end));
             while current_end < last_date {
                 let mut yy = current_start.year();
                 let mut mm = current_start.month();
-                if mm == 12 {
-                    mm = 1;
-                    yy += 1
-                } else {
-                    mm += 1
-                }
+                match mm {
+                    9 | 10 | 11 | 12 => {
+                        mm = (mm + 4) % 12;
+                        yy += 1
+                    }
+                    _ => mm += 4,
+                };
                 current_start = NaiveDate::from_ymd(yy, mm, 1);
                 current_end = NaiveDate::from_ymd(yy, mm, last_day_of_month(yy, mm));
                 range.push((current_start, current_end));

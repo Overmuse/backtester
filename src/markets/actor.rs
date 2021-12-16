@@ -8,12 +8,13 @@ use indicatif::{ProgressBar, ProgressStyle};
 use rust_decimal::Decimal;
 use tokio::sync::mpsc::{error::TryRecvError, unbounded_channel, UnboundedReceiver};
 use tokio::sync::oneshot::Sender as OneshotSender;
-use tracing::{debug, trace};
+use tokio::sync::RwLock;
+use tracing::debug;
 
 pub(crate) struct MarketActor {
     requests: UnboundedReceiver<(OneshotSender<MarketResponse>, MarketRequest)>,
-    data_manager: DataManager,
-    clock: Clock,
+    data_manager: RwLock<DataManager>,
+    clock: RwLock<Clock>,
     progress: ProgressBar,
 }
 
@@ -35,14 +36,14 @@ impl MarketActor {
                     .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
                     .progress_chars("##-"),
             );
-        let data_manager = DataManager::new(data_provider, data_options);
+        let data_manager = RwLock::new(DataManager::new(data_provider, data_options));
         let (tx, rx) = unbounded_channel();
         let handle = Market::new(tx);
 
         let actor = Self {
             requests: rx,
             data_manager,
-            clock,
+            clock: RwLock::new(clock),
             progress,
         };
         tokio::spawn(async move { actor.run_forever().await });
@@ -59,11 +60,11 @@ impl MarketActor {
                 }
                 Err(TryRecvError::Empty) => {
                     // No current message, let's download some data!
-                    if !self.data_manager.is_done_downloading() {
-                        trace!("No outstanding requests, downloading data");
-                        self.data_manager.process_download_job().await;
-                        trace!("Finished downloading data");
-                    }
+                    // if !self.data_manager.read().await.is_done_downloading() {
+                    //     trace!("No outstanding requests, downloading data");
+                    //     self.data_manager.write().await.process_download_job().await;
+                    //     trace!("Finished downloading data");
+                    // }
                 }
                 Err(TryRecvError::Disconnected) => {
                     debug!("No listeners remain, disconnecting");
@@ -74,7 +75,7 @@ impl MarketActor {
         }
     }
 
-    async fn handle_message(&mut self, request: MarketRequest) -> MarketResponse {
+    async fn handle_message(&self, request: MarketRequest) -> MarketResponse {
         match request {
             MarketRequest::Data { ticker, start, end } => {
                 let data = self.get_data(&ticker, start, end).await;
@@ -89,57 +90,65 @@ impl MarketActor {
             MarketRequest::GetLast { ticker } => {
                 MarketResponse::MaybePrice(self.get_last_price(&ticker).await)
             }
-            MarketRequest::Datetime => MarketResponse::Datetime(self.datetime()),
-            MarketRequest::PreviousDatetime => MarketResponse::Datetime(self.previous_datetime()),
-            MarketRequest::NextDatetime => MarketResponse::Datetime(self.next_datetime()),
-            MarketRequest::State => MarketResponse::State(self.state()),
-            MarketRequest::IsDone => MarketResponse::Bool(self.is_done()),
-            MarketRequest::IsOpen => MarketResponse::Bool(self.is_open()),
+            MarketRequest::Datetime => MarketResponse::Datetime(self.datetime().await),
+            MarketRequest::PreviousDatetime => {
+                MarketResponse::Datetime(self.previous_datetime().await)
+            }
+            MarketRequest::NextDatetime => MarketResponse::Datetime(self.next_datetime().await),
+            MarketRequest::State => MarketResponse::State(self.state().await),
+            MarketRequest::IsDone => MarketResponse::Bool(self.is_done().await),
+            MarketRequest::IsOpen => MarketResponse::Bool(self.is_open().await),
             MarketRequest::Tick => {
-                self.tick();
+                self.tick().await;
                 MarketResponse::Success
             }
         }
     }
 
-    async fn get_open(&mut self, ticker: &str) -> Option<Decimal> {
-        let datetime = self.datetime();
+    async fn get_open(&self, ticker: &str) -> Option<Decimal> {
+        let datetime = self.datetime().await;
         let data = self.get_data(ticker, datetime, datetime).await;
         data.map(|x| x.first().unwrap().open)
     }
 
-    async fn get_current_price(&mut self, ticker: &str) -> Option<Decimal> {
-        let datetime = self.datetime();
+    async fn get_current_price(&self, ticker: &str) -> Option<Decimal> {
+        let datetime = self.datetime().await;
         self.data_manager
+            .write()
+            .await
             .get_last_before(ticker, datetime)
             .map(|x| x.close)
     }
 
-    pub async fn get_last_price(&mut self, ticker: &str) -> Option<Decimal> {
-        let datetime = self.previous_datetime();
+    pub async fn get_last_price(&self, ticker: &str) -> Option<Decimal> {
+        let datetime = self.previous_datetime().await;
         let data = self.get_data(ticker, datetime, datetime).await;
         data.map(|x| x.last().unwrap().close)
     }
 
     async fn get_data(
-        &mut self,
+        &self,
         ticker: &str,
         start: DateTime<Tz>,
         end: DateTime<Tz>,
     ) -> Option<Vec<Aggregate>> {
-        self.data_manager.get_data(ticker, start, end).await
+        self.data_manager
+            .write()
+            .await
+            .get_data(ticker, start, end)
+            .await
     }
 
-    fn datetime(&self) -> DateTime<Tz> {
-        self.clock.datetime()
+    async fn datetime(&self) -> DateTime<Tz> {
+        self.clock.read().await.datetime()
     }
 
-    fn state(&self) -> MarketState {
-        self.clock.state()
+    async fn state(&self) -> MarketState {
+        self.clock.read().await.state()
     }
 
-    fn is_done(&self) -> bool {
-        if self.clock.is_done() {
+    async fn is_done(&self) -> bool {
+        if self.clock.read().await.is_done() {
             self.progress.finish();
             true
         } else {
@@ -147,20 +156,20 @@ impl MarketActor {
         }
     }
 
-    fn is_open(&self) -> bool {
-        self.clock.is_open()
+    async fn is_open(&self) -> bool {
+        self.clock.read().await.is_open()
     }
 
-    fn previous_datetime(&self) -> DateTime<Tz> {
-        self.clock.previous_datetime()
+    async fn previous_datetime(&self) -> DateTime<Tz> {
+        self.clock.read().await.previous_datetime()
     }
 
-    fn next_datetime(&self) -> DateTime<Tz> {
-        self.clock.next_datetime()
+    async fn next_datetime(&self) -> DateTime<Tz> {
+        self.clock.read().await.next_datetime()
     }
 
-    fn tick(&mut self) {
-        self.clock.tick();
+    async fn tick(&self) {
+        self.clock.write().await.tick();
         self.progress.inc(1);
     }
 }
