@@ -14,6 +14,7 @@ use rust_decimal::Decimal;
 use serde::Serialize;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot::Sender as OneshotSender;
+use tracing::{debug, trace};
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -63,6 +64,7 @@ impl BrokerageActor {
         }
     }
 
+    #[tracing::instrument(skip(self, request))]
     async fn handle_message(&mut self, request: BrokerageRequest) -> BrokerageResponse {
         match request {
             BrokerageRequest::GetPositions => {
@@ -92,6 +94,7 @@ impl BrokerageActor {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     async fn get_equity(&self) -> Decimal {
         let tickers = self.account.positions.keys();
         let equity = futures::stream::iter(tickers)
@@ -106,6 +109,7 @@ impl BrokerageActor {
         equity
     }
 
+    #[tracing::instrument(skip(self))]
     async fn close_positions(&mut self) {
         let orders: Vec<Order> = self
             .account
@@ -121,11 +125,12 @@ impl BrokerageActor {
             })
             .collect();
         for order in orders {
+            debug!(id = %order.id, "Closing order");
             self.send_order(order).await
         }
-        debug_assert_eq!(self.account.positions.values().count(), 0)
     }
 
+    #[tracing::instrument(skip(self, order), fields(id = %order.id))]
     async fn send_order(&mut self, order: Order) {
         if self.market.is_open().await {
             let market = self.market.clone();
@@ -139,12 +144,15 @@ impl BrokerageActor {
                 }
             }
         } else {
+            trace!("Market closed");
             self.reject_order(order).await;
         }
     }
 
+    #[tracing::instrument(skip(self, order, price))]
     async fn fill_order(&mut self, order: Order, price: Decimal) {
         let fill_time = self.market.datetime().await;
+        debug!(%fill_time, %price, "Order filled");
         let lot = Lot {
             fill_time,
             price,
@@ -170,7 +178,9 @@ impl BrokerageActor {
         }
     }
 
+    #[tracing::instrument(skip(self, order))]
     async fn save_order(&mut self, order: &Order) {
+        debug!("Order saved");
         self.account.active_orders.push(order.clone());
         let event = Event::OrderUpdate {
             status: OrderStatus::Submitted,
@@ -180,7 +190,9 @@ impl BrokerageActor {
         self.report_event(&event)
     }
 
+    #[tracing::instrument(skip(self, order))]
     async fn reject_order(&mut self, order: Order) {
+        debug!("Order rejected");
         self.account.inactive_orders.push(order.clone());
         let event = Event::OrderUpdate {
             status: OrderStatus::Rejected,
@@ -190,7 +202,9 @@ impl BrokerageActor {
         self.report_event(&event)
     }
 
+    #[tracing::instrument(skip(self, order), fields(id = %order.id))]
     async fn expire_order(&mut self, order: Order) {
+        debug!("Order expired");
         self.account.inactive_orders.push(order.clone());
         let event = Event::OrderUpdate {
             status: OrderStatus::Expired,
@@ -208,6 +222,7 @@ impl BrokerageActor {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     async fn reconcile_active_orders(&mut self) {
         // Manual version of drain_filter to be able to use the stable toolchain
         // TODO: Change to use drain_filter once https://github.com/rust-lang/rust/issues/43244 is
@@ -239,6 +254,7 @@ impl BrokerageActor {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     async fn expire_orders(&mut self) {
         loop {
             let maybe_order = self.account.active_orders.pop();

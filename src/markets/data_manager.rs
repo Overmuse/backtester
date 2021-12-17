@@ -1,10 +1,10 @@
 use crate::data::{provider::DataProvider, Aggregate, DataOptions, Resolution};
-use crate::markets::cache::MarketDataCache;
 use crate::utils::last_day_of_month;
 use chrono::prelude::*;
 use chrono_tz::Tz;
 use futures::{stream, StreamExt};
 use itertools::Itertools;
+use std::collections::{BTreeMap, HashMap};
 use tracing::error;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -16,9 +16,9 @@ pub struct DownloadJob {
 }
 
 pub struct DataManager {
-    cache: MarketDataCache,
     data_provider: Box<dyn DataProvider + Send + Sync>,
     download_jobs: Vec<DownloadJob>,
+    data: HashMap<String, BTreeMap<DateTime<Tz>, Aggregate>>,
 }
 
 impl DataManager {
@@ -26,36 +26,31 @@ impl DataManager {
         data_provider: D,
         data_options: DataOptions,
     ) -> Self {
-        let download_jobs = build_date_range(
-            data_options.start,
-            data_options.end,
-            data_options.resolution,
-        )
-        .into_iter()
-        .cartesian_product(data_options.tickers.iter())
-        .map(|((start, end), ticker)| DownloadJob {
-            ticker: ticker.to_string(),
-            start,
-            end,
-            resolution: data_options.resolution,
-        })
-        .collect();
-        let cache = MarketDataCache::new();
+        let download_jobs = data_options
+            .tickers
+            .iter()
+            .map(|ticker| DownloadJob {
+                ticker: ticker.to_string(),
+                start: data_options.start,
+                end: data_options.end,
+                resolution: data_options.resolution,
+            })
+            .collect();
 
         Self {
-            cache,
             data_provider: Box::new(data_provider),
             download_jobs,
+            data: HashMap::new(),
         }
     }
 
     pub async fn download_data(&mut self) {
         let jobs = self.download_jobs.clone();
-        let progress = crate::utils::progress(jobs.len() as u64, "Downloading data");
+        //let progress = crate::utils::progress(jobs.len() as u64, "Downloading data");
         let data: Vec<(String, Vec<Aggregate>)> = stream::iter(jobs.into_iter())
             .map(|job| {
                 let data_provider = &self.data_provider;
-                let progress = progress.clone();
+                //let progress = progress.clone();
                 async move {
                     let data = data_provider
                         .download_data(&job.ticker, job.start, job.end, job.resolution)
@@ -64,34 +59,58 @@ impl DataManager {
                         error!("{}", e);
                     }
                     let data = data.unwrap();
-                    progress.inc(1);
+                    //progress.inc(1);
                     (job.ticker, data)
                 }
             })
-            .buffer_unordered(100)
+            .buffer_unordered(20)
             .collect()
             .await;
-        progress.finish();
+        //progress.finish();
 
         let progress = crate::utils::progress(data.len() as u64, "Storing data");
         for (ticker, datum) in data.into_iter() {
-            self.cache.store_data(&ticker, datum);
+            self.data
+                .entry(ticker.to_string())
+                .and_modify(|map| {
+                    for agg in datum.clone() {
+                        map.insert(agg.datetime, agg);
+                    }
+                })
+                .or_insert_with(|| datum.into_iter().map(|agg| (agg.datetime, agg)).collect());
             progress.inc(1);
         }
         progress.finish();
     }
 
-    pub async fn get_data(
+    pub fn get_data(
         &self,
         ticker: &str,
         start: DateTime<Tz>,
         end: DateTime<Tz>,
     ) -> Option<Vec<Aggregate>> {
-        self.cache.get_data(ticker, start, end)
+        let data: Vec<Aggregate> = self
+            .data
+            .get(ticker)?
+            .range(start..=end)
+            .map(|(_, agg)| agg)
+            .cloned()
+            .collect();
+        if data.is_empty() {
+            None
+        } else {
+            Some(data)
+        }
     }
 
     pub fn get_last_before(&self, ticker: &str, datetime: DateTime<Tz>) -> Option<Aggregate> {
-        self.cache.get_last_before(ticker, datetime)
+        let start = chrono::MIN_DATETIME.with_timezone(&datetime.timezone());
+        self.data
+            .get(ticker)?
+            .range(start..=datetime)
+            .last()
+            .map(|(_, agg)| agg)
+            .cloned()
     }
 }
 
@@ -135,7 +154,7 @@ fn build_date_range(
                 ),
                 _ => NaiveDate::from_ymd(
                     start.year(),
-                    start.month(),
+                    start.month() + 4,
                     last_day_of_month(start.year(), start.month()),
                 ),
             };

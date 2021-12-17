@@ -37,12 +37,14 @@ impl Brokerage {
         Self { sender }
     }
 
+    #[tracing::instrument(skip(self, request))]
     async fn send_request(&self, request: BrokerageRequest) -> BrokerageResponse {
         let (tx, rx) = oneshot::channel();
         self.sender.send((tx, request)).unwrap();
         rx.await.unwrap()
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn get_positions(&self) -> Vec<Position> {
         let response = self.send_request(BrokerageRequest::GetPositions).await;
         if let BrokerageResponse::Positions(positions) = response {
@@ -52,6 +54,7 @@ impl Brokerage {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn get_equity(&self) -> Decimal {
         let response = self.send_request(BrokerageRequest::GetEquity).await;
         if let BrokerageResponse::Decimal(equity) = response {
@@ -61,14 +64,17 @@ impl Brokerage {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn close_positions(&self) {
         self.send_request(BrokerageRequest::ClosePositions).await;
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn send_order(&self, order: Order) {
         self.send_request(BrokerageRequest::SendOrder(order)).await;
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn subscribe(&self) -> UnboundedReceiver<Event> {
         let response = self.send_request(BrokerageRequest::Subscribe).await;
         if let BrokerageResponse::EventListener(receiver) = response {
@@ -78,23 +84,13 @@ impl Brokerage {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     pub(crate) async fn reconcile_active_orders(&self) {
         self.send_request(BrokerageRequest::ReconcileOrders).await;
     }
 
+    #[tracing::instrument(skip(self))]
     pub(crate) async fn expire_orders(&self) {
         self.send_request(BrokerageRequest::ExpireOrders).await;
     }
-
-    // pub fn get_equity(&self) -> Decimal {
-    //     let tickers = self.account.positions.keys();
-    //     let positions_value: Decimal = tickers
-    //         .map(|ticker| (ticker, self.market.get_current_price(ticker)))
-    //         .map(|(ticker, price)| {
-    //             self.account
-    //                 .market_value(ticker, price.unwrap_or(Decimal::ZERO))
-    //         })
-    //         .sum();
-    //     positions_value + self.account.cash
-    // }
 }

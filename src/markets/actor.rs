@@ -8,7 +8,7 @@ use indicatif::ProgressBar;
 use rust_decimal::Decimal;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 use tokio::sync::oneshot::Sender as OneshotSender;
-use tracing::debug;
+use tracing::{debug, trace};
 
 pub(crate) struct MarketActor {
     requests: UnboundedReceiver<(OneshotSender<MarketResponse>, MarketRequest)>,
@@ -47,80 +47,87 @@ impl MarketActor {
         self.data_manager.download_data().await;
         self.progress.reset();
         while let Some((tx, request)) = self.requests.recv().await {
-            debug!("Received request: {:?}", request);
-            let response = self.handle_message(request).await;
+            trace!("Received request: {:?}", request);
+            let response = self.handle_message(request);
             tx.send(response).unwrap()
         }
         debug!("No listeners remain, disconnecting");
     }
 
-    async fn handle_message(&mut self, request: MarketRequest) -> MarketResponse {
+    fn handle_message(&mut self, request: MarketRequest) -> MarketResponse {
         match request {
             MarketRequest::Data { ticker, start, end } => {
-                let data = self.get_data(&ticker, start, end).await;
+                let data = self.get_data(&ticker, start, end);
                 MarketResponse::Data(data)
             }
-            MarketRequest::GetOpen { ticker } => {
-                MarketResponse::MaybePrice(self.get_open(&ticker).await)
-            }
+            MarketRequest::GetOpen { ticker } => MarketResponse::MaybePrice(self.get_open(&ticker)),
             MarketRequest::GetCurrent { ticker } => {
-                MarketResponse::MaybePrice(self.get_current_price(&ticker).await)
+                MarketResponse::MaybePrice(self.get_current_price(&ticker))
             }
             MarketRequest::GetLast { ticker } => {
-                MarketResponse::MaybePrice(self.get_last_price(&ticker).await)
+                MarketResponse::MaybePrice(self.get_last_price(&ticker))
             }
-            MarketRequest::Datetime => MarketResponse::Datetime(self.datetime().await),
-            MarketRequest::PreviousDatetime => {
-                MarketResponse::Datetime(self.previous_datetime().await)
-            }
-            MarketRequest::NextDatetime => MarketResponse::Datetime(self.next_datetime().await),
-            MarketRequest::State => MarketResponse::State(self.state().await),
-            MarketRequest::IsDone => MarketResponse::Bool(self.is_done().await),
-            MarketRequest::IsOpen => MarketResponse::Bool(self.is_open().await),
+            MarketRequest::Datetime => MarketResponse::Datetime(self.datetime()),
+            MarketRequest::PreviousDatetime => MarketResponse::Datetime(self.previous_datetime()),
+            MarketRequest::NextDatetime => MarketResponse::Datetime(self.next_datetime()),
+            MarketRequest::State => MarketResponse::State(self.state()),
+            MarketRequest::IsDone => MarketResponse::Bool(self.is_done()),
+            MarketRequest::IsOpen => MarketResponse::Bool(self.is_open()),
             MarketRequest::Tick => {
-                self.tick().await;
+                self.tick();
                 MarketResponse::Success
             }
         }
     }
 
-    async fn get_open(&self, ticker: &str) -> Option<Decimal> {
-        let datetime = self.datetime().await;
-        let data = self.get_data(ticker, datetime, datetime).await;
+    #[tracing::instrument(skip(self))]
+    fn get_open(&self, ticker: &str) -> Option<Decimal> {
+        trace!(ticker, "Get open");
+        let datetime = self.datetime();
+        let data = self.get_data(ticker, datetime, datetime);
         data.map(|x| x.first().unwrap().open)
     }
 
-    async fn get_current_price(&self, ticker: &str) -> Option<Decimal> {
-        let datetime = self.datetime().await;
+    #[tracing::instrument(skip(self))]
+    fn get_current_price(&self, ticker: &str) -> Option<Decimal> {
+        trace!(ticker, "Get current price");
+        let datetime = self.datetime();
         self.data_manager
             .get_last_before(ticker, datetime)
             .map(|x| x.close)
     }
 
-    pub async fn get_last_price(&self, ticker: &str) -> Option<Decimal> {
-        let datetime = self.previous_datetime().await;
-        let data = self.get_data(ticker, datetime, datetime).await;
+    #[tracing::instrument(skip(self))]
+    pub fn get_last_price(&self, ticker: &str) -> Option<Decimal> {
+        trace!(ticker, "Get last price");
+        let datetime = self.previous_datetime();
+        let data = self.get_data(ticker, datetime, datetime);
         data.map(|x| x.last().unwrap().close)
     }
 
-    async fn get_data(
+    #[tracing::instrument(skip(self))]
+    fn get_data(
         &self,
         ticker: &str,
         start: DateTime<Tz>,
         end: DateTime<Tz>,
     ) -> Option<Vec<Aggregate>> {
-        self.data_manager.get_data(ticker, start, end).await
+        trace!(ticker, %start, %end, "Get data");
+        self.data_manager.get_data(ticker, start, end)
     }
 
-    async fn datetime(&self) -> DateTime<Tz> {
+    #[tracing::instrument(skip(self))]
+    fn datetime(&self) -> DateTime<Tz> {
         self.clock.datetime()
     }
 
-    async fn state(&self) -> MarketState {
+    #[tracing::instrument(skip(self))]
+    fn state(&self) -> MarketState {
         self.clock.state()
     }
 
-    async fn is_done(&self) -> bool {
+    #[tracing::instrument(skip(self))]
+    fn is_done(&self) -> bool {
         if self.clock.is_done() {
             self.progress.finish();
             true
@@ -129,19 +136,23 @@ impl MarketActor {
         }
     }
 
-    async fn is_open(&self) -> bool {
+    #[tracing::instrument(skip(self))]
+    fn is_open(&self) -> bool {
         self.clock.is_open()
     }
 
-    async fn previous_datetime(&self) -> DateTime<Tz> {
+    #[tracing::instrument(skip(self))]
+    fn previous_datetime(&self) -> DateTime<Tz> {
         self.clock.previous_datetime()
     }
 
-    async fn next_datetime(&self) -> DateTime<Tz> {
+    #[tracing::instrument(skip(self))]
+    fn next_datetime(&self) -> DateTime<Tz> {
         self.clock.next_datetime()
     }
 
-    async fn tick(&mut self) {
+    #[tracing::instrument(skip(self))]
+    fn tick(&mut self) {
         self.clock.tick();
         self.progress.inc(1);
     }

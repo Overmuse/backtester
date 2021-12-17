@@ -12,7 +12,7 @@ use chrono_tz::Tz;
 use rust_decimal::Decimal;
 use std::fs::{create_dir_all, remove_file, OpenOptions};
 use std::io::Write;
-use tracing::trace;
+use tracing::{trace, Instrument};
 
 pub struct Simulator<S: Strategy + Send + Sync> {
     brokerage: Brokerage,
@@ -46,46 +46,56 @@ impl<S: Strategy + Send + Sync> Simulator<S> {
         let mut event_listener = self.brokerage.subscribe().await;
         while !self.market.is_done().await {
             let (datetime, state) = futures::join!(self.market.datetime(), self.market.state());
-            trace!("{} - {:?}", datetime, state);
-            match state {
-                MarketState::PreOpen => {
-                    self.strategy
-                        .before_open(self.brokerage.clone(), self.market.clone())
-                        .await
+            let span = tracing::debug_span!("Datetime", %datetime, ?state);
+            async {
+                match state {
+                    MarketState::PreOpen => {
+                        self.strategy
+                            .before_open(self.brokerage.clone(), self.market.clone())
+                            .instrument(tracing::trace_span!("Before open"))
+                            .await
+                    }
+                    MarketState::Opening => {
+                        self.strategy
+                            .at_open(self.brokerage.clone(), self.market.clone())
+                            .instrument(tracing::trace_span!("At open"))
+                            .await
+                    }
+                    MarketState::Open => {
+                        self.brokerage.reconcile_active_orders().await;
+                        self.strategy
+                            .during_regular_hours(self.brokerage.clone(), self.market.clone())
+                            .instrument(tracing::trace_span!("Regular hours"))
+                            .await
+                    }
+                    MarketState::Closing => {
+                        self.strategy
+                            .at_close(self.brokerage.clone(), self.market.clone())
+                            .instrument(tracing::trace_span!("At close"))
+                            .await
+                    }
+                    MarketState::Closed => {
+                        self.brokerage.expire_orders().await;
+                        self.strategy
+                            .after_close(self.brokerage.clone(), self.market.clone())
+                            .instrument(tracing::trace_span!("After close"))
+                            .await?;
+                        Ok(())
+                    }
+                }?;
+                while let Ok(event) = event_listener.try_recv() {
+                    trace!("Event received: {:?}", event);
+                    self.strategy.on_event(event.clone()).await?;
+                    self.handle_event(event)
                 }
-                MarketState::Opening => {
-                    self.strategy
-                        .at_open(self.brokerage.clone(), self.market.clone())
-                        .await
-                }
-                MarketState::Open => {
-                    self.brokerage.reconcile_active_orders().await;
-                    self.strategy
-                        .during_regular_hours(self.brokerage.clone(), self.market.clone())
-                        .await
-                }
-                MarketState::Closing => {
-                    self.strategy
-                        .at_close(self.brokerage.clone(), self.market.clone())
-                        .await
-                }
-                MarketState::Closed => {
-                    self.brokerage.expire_orders().await;
-                    self.strategy
-                        .after_close(self.brokerage.clone(), self.market.clone())
-                        .await?;
-                    Ok(())
-                }
-            }?;
-            while let Ok(event) = event_listener.try_recv() {
-                trace!("Event received: {:?}", event);
-                self.strategy.on_event(event.clone()).await?;
-                self.handle_event(event)
+                let equity = self.brokerage.get_equity().await;
+                trace!("Equity: {:.2}", equity);
+                self.statistics.record_equity(datetime, equity);
+                self.market.tick().await;
+                Ok(())
             }
-            let equity = self.brokerage.get_equity().await;
-            trace!("Equity: {:.2}", equity);
-            self.statistics.record_equity(datetime, equity);
-            self.market.tick().await;
+            .instrument(span)
+            .await?
         }
         self.generate_report();
         Ok(())
