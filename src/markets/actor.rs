@@ -1,6 +1,7 @@
 use crate::markets::clock::{Clock, MarketState};
 use crate::markets::data_manager::DataManager;
 use crate::markets::handle::*;
+use crate::utils::progress::progress;
 use crate::Aggregate;
 use crate::Options;
 use chrono::prelude::*;
@@ -26,7 +27,7 @@ impl MarketActor {
             data_options.warmup,
             data_options.resolution,
         );
-        let progress = crate::utils::progress(clock.simulation_periods() as u64, "Simulating");
+        let progress = progress(clock.simulation_periods() as u64, "Simulating");
         let data_manager = DataManager::new(data_options);
         let (tx, rx) = unbounded_channel();
         let handle = Market::new(tx);
