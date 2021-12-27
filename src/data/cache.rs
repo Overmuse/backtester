@@ -1,4 +1,4 @@
-use super::{error::Error, DataOptions, DataProvider, MarketData};
+use super::{error::Error, provider::DataProvider, DataOptions, MarketData};
 use async_trait::async_trait;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
@@ -10,7 +10,7 @@ pub trait DataCache {
 
     fn data_provider(&self) -> &Self::DataProvider;
     fn is_cache_valid(&self, meta: &DataOptions) -> bool;
-    fn save_data(&self, data: &MarketData) -> Result<(), Error>;
+    fn save_data(&self, meta: &DataOptions, data: &MarketData) -> Result<(), Error>;
     async fn load_data(&self, meta: &DataOptions) -> Result<MarketData, Error>;
 }
 
@@ -33,9 +33,16 @@ impl<T: DataProvider + Send + Sync + 'static> FileCache for T {
 impl<T> DataProvider for T
 where
     T: DataCache + Sync + Send,
+    T::DataProvider: DataProvider + Send + Sync,
 {
     async fn download_data(&self, meta: &DataOptions) -> Result<MarketData, Error> {
-        self.load_data(meta).await
+        if self.is_cache_valid(meta) {
+            self.load_data(meta).await
+        } else {
+            let data = self.data_provider().download_data(meta).await?;
+            self.save_data(meta, &data)?;
+            Ok(data)
+        }
     }
 }
 
@@ -65,11 +72,11 @@ impl<T: DataProvider + Send + Sync> DataCache for FileDataCache<T> {
 
     fn is_cache_valid(&self, meta: &DataOptions) -> bool {
         let mut path = self.dir.clone();
-        path.push("meta.json");
+        path.push("meta.data");
         if path.exists() {
             let bytes = std::fs::read(path);
             if let Ok(bytes) = bytes {
-                let cached_meta = serde_json::from_slice::<DataOptions>(&bytes);
+                let cached_meta = rmp_serde::from_slice::<DataOptions>(&bytes);
                 if let Ok(cached_meta) = cached_meta {
                     let ticker_check = meta
                         .tickers
@@ -85,38 +92,51 @@ impl<T: DataProvider + Send + Sync> DataCache for FileDataCache<T> {
         false
     }
 
-    fn save_data(&self, data: &MarketData) -> Result<(), Error> {
+    fn save_data(&self, meta: &DataOptions, data: &MarketData) -> Result<(), Error> {
         let mut path = self.dir.clone();
-        path.push("data.json");
+        std::fs::create_dir_all(path.clone())?;
+        path.push("meta.data");
         let mut file = OpenOptions::new().create(true).write(true).open(path)?;
-        let bytes = serde_json::to_vec_pretty(&data)?;
+        let bytes = rmp_serde::to_vec(meta)?;
+        file.write_all(&bytes)?;
+        let mut path = self.dir.clone();
+        path.push("prices.data");
+        let mut file = OpenOptions::new().create(true).write(true).open(path)?;
+        let bytes = rmp_serde::to_vec(&data)?;
         file.write_all(&bytes)?;
         Ok(())
     }
 
     async fn load_data(&self, meta: &DataOptions) -> Result<MarketData, Error> {
         let mut path = self.dir.clone();
-        if self.is_cache_valid(meta) {
-            path.push("data.json");
-            let bytes = std::fs::read(path)?;
-            let mut data: MarketData = serde_json::from_slice(&bytes)?;
-            data.prices
-                .retain(|ticker, _| meta.tickers.contains(ticker));
-            data.prices.values_mut().for_each(|timeseries| {
-                timeseries.retain(|dt, _| {
-                    dt.naive_utc().date() > meta.start && dt.naive_utc().date() <= meta.end
-                })
-            });
-            Ok(data)
-        } else {
-            std::fs::create_dir_all(path.clone())?;
-            path.push("meta.json");
-            let mut file = OpenOptions::new().create(true).write(true).open(path)?;
-            let bytes = serde_json::to_vec(meta)?;
-            file.write_all(&bytes)?;
-            let data = self.data_provider().download_data(meta).await?;
-            self.save_data(&data)?;
-            Ok(data)
-        }
+        path.push("prices.data");
+        let bytes = std::fs::read(path)?;
+        let mut data: MarketData = rmp_serde::from_slice(&bytes)?;
+        let t_idx = data
+            .timestamps
+            .iter()
+            .map(|t| t.naive_utc().date() >= meta.start && t.naive_utc().date() <= meta.end);
+        let (new_data, new_timestamps) = data
+            .data
+            .iter()
+            .zip(data.timestamps.clone())
+            .zip(t_idx)
+            .filter_map(|((r, t), i)| if i { Some((r.clone(), t)) } else { None })
+            .unzip();
+        // TODO: Filter tickers
+        //let ticker_idx = data
+        //    .tickers
+        //    .iter()
+        //    .map(|ticker| meta.tickers.contains(ticker));
+        //let (new_data, new_tickers) = new_data
+        //    .data
+        //    .iter()
+        //    .zip(data.timestamps.clone())
+        //    .zip(t_idx)
+        //    .filter_map(|((r, t), i)| if i { Some((r.clone(), t)) } else { None })
+        //    .unzip();
+        data.data = new_data;
+        data.timestamps = new_timestamps;
+        Ok(data)
     }
 }

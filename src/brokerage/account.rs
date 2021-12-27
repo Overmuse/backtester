@@ -8,7 +8,6 @@ pub struct Account {
     pub inactive_orders: Vec<Order>,
     pub positions: HashMap<String, Position>,
     pub cash: Decimal,
-    starting_cash: Decimal,
 }
 
 impl Account {
@@ -18,7 +17,6 @@ impl Account {
             inactive_orders: Vec::new(),
             positions: HashMap::new(),
             cash,
-            starting_cash: cash,
         }
     }
 
@@ -37,19 +35,13 @@ impl Account {
             .unwrap_or(Decimal::ZERO)
             * price
     }
-
-    pub fn reset(&mut self) {
-        self.cash = self.starting_cash;
-        self.active_orders.clear();
-        self.inactive_orders.clear();
-        self.positions.clear()
-    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use chrono::Utc;
+    use chrono::TimeZone;
+    use chrono_tz::US::Eastern;
 
     #[test]
     fn it_can_be_initialized() {
@@ -57,15 +49,6 @@ mod test {
         assert!(account.active_orders.is_empty());
         assert!(account.inactive_orders.is_empty());
         assert!(account.positions.is_empty());
-        assert_eq!(account.cash, Decimal::ONE_HUNDRED);
-        assert_eq!(account.starting_cash, Decimal::ONE_HUNDRED);
-    }
-
-    #[test]
-    fn it_can_be_reset() {
-        let mut account = Account::new(Decimal::ONE_HUNDRED);
-        account.cash = Decimal::new(200, 0);
-        account.reset();
         assert_eq!(account.cash, Decimal::ONE_HUNDRED);
     }
 
@@ -75,7 +58,7 @@ mod test {
         account.add_lot(
             "AAPL".into(),
             Lot {
-                fill_time: Utc::now(),
+                fill_time: Eastern.ymd(2021, 1, 1).and_hms(0, 0, 0),
                 price: Decimal::new(2, 0),
                 quantity: Decimal::new(3, 0),
             },

@@ -1,7 +1,3 @@
-[workspace]
-members = [".", "examples/polygon"]
-default-members = [".", "examples/polygon"]
-
 [package]
 name = "backtester"
 version = "0.1.0"
@@ -12,14 +8,31 @@ edition = "2018"
 
 [dependencies]
 async-trait = "0.1"
-chrono = "0.4"
-num-traits = "0.2.14"
-polygon = { git = "ssh://git@github.com/Overmuse/polygon", tag = "v0.11.2", default-features = false, features = ["rest"], optional=true }
-rust_decimal = "1.16.0"
-serde = "1.0"
-serde_json = "1.0"
-thiserror = "1.0.30"
-uuid = { version = "0.8.2", features = ["v4"] }
+bdays = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.6"
+csv = "1.1.6"
+futures = { version = "0.3"}
+indicatif = "0.16"
+lazy_static = "1.4"
+num-traits = "0.2"
+rust_decimal = "1.16"
+polygon = { git = "ssh://git@github.com/Overmuse/polygon", tag = "v0.14.0", default-features = false, features = ["rest"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.73"
+serde_with = { version = "1.11", features = ["chrono"] }
+stream-flatten-iters = { version = "0.2" }
+thiserror = "1.0"
+tokio = { version = "1.0", features = ["sync"] }
+tracing = "0.1.29"
+uuid = { version = "0.8", features = ["v4", "serde"] }
 
-[features]
-default = []
+[[example]]
+name = "random_trades"
+
+[dev-dependencies]
+anyhow = "1.0"
+dotenv = "0.15"
+rand = "0.8"
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+tracing-subscriber = "0.2"

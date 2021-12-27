@@ -1,7 +1,7 @@
 use crate::brokerage::position::Lot;
 use rust_decimal::prelude::*;
 
-pub trait Commission {
+pub trait Commission: Send + Sync {
     fn calculate(&self, lot: &Lot) -> Decimal;
 }
 
@@ -82,6 +82,7 @@ impl Commission for PerDollarCommission {
 mod test {
     use super::*;
     use chrono::Utc;
+    use chrono_tz::US::Eastern;
 
     #[test]
     fn it_calculates_the_correct_commission_amount() {
@@ -91,7 +92,7 @@ mod test {
         let per_dollar_commission = PerDollarCommission::new(Decimal::new(3, 0));
 
         let lot = Lot {
-            fill_time: Utc::now(),
+            fill_time: Utc::now().with_timezone(&Eastern),
             quantity: Decimal::new(4, 0),
             price: Decimal::new(5, 0),
         };
@@ -110,7 +111,7 @@ mod test {
             PerDollarCommission::new(Decimal::new(3, 0)).min_lot_cost(Decimal::new(100, 0));
 
         let lot = Lot {
-            fill_time: Utc::now(),
+            fill_time: Utc::now().with_timezone(&Eastern),
             quantity: Decimal::new(4, 0),
             price: Decimal::new(5, 0),
         };

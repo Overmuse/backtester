@@ -1,4 +1,4 @@
-pub trait Slippage {
+pub trait Slippage: Send + Sync {
     fn slippage(&self, volume_share: f64) -> f64;
 }
 

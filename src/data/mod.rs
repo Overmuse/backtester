@@ -1,34 +1,16 @@
-use async_trait::async_trait;
-use chrono::{DateTime, NaiveDate, Utc};
+use crate::utils::serde_tz;
+use chrono::{DateTime, NaiveTime, TimeZone};
+use chrono_tz::{Tz, US::Eastern};
+use polygon::rest::Aggregate as PolygonAggregate;
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
 
-pub use cache::FileCache;
-mod cache;
-pub mod downloader;
 pub mod error;
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct DataOptions {
-    tickers: Vec<String>,
-    start: NaiveDate,
-    end: NaiveDate,
-}
-
-impl DataOptions {
-    pub fn new(tickers: Vec<String>, start: NaiveDate, end: NaiveDate) -> Self {
-        Self {
-            tickers,
-            start,
-            end,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Aggregate {
-    pub datetime: DateTime<Utc>,
+    #[serde(with = "serde_tz")]
+    pub datetime: DateTime<Tz>,
     pub open: Decimal,
     pub high: Decimal,
     pub low: Decimal,
@@ -36,14 +18,35 @@ pub struct Aggregate {
     pub volume: Decimal,
 }
 
-type PriceData = HashMap<String, BTreeMap<DateTime<Utc>, Aggregate>>;
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct MarketData {
-    pub prices: PriceData,
+impl From<PolygonAggregate> for Aggregate {
+    fn from(p: PolygonAggregate) -> Aggregate {
+        Aggregate {
+            datetime: p.t.with_timezone(&Eastern),
+            open: p.o,
+            high: p.h,
+            low: p.l,
+            close: p.c,
+            volume: p.v,
+        }
+    }
 }
 
-#[async_trait]
-pub trait DataProvider {
-    async fn download_data(&self, meta: &DataOptions) -> Result<MarketData, error::Error>;
+pub trait MarketTimeExt {
+    fn is_regular_hours(&self) -> bool;
+    fn is_opening(&self) -> bool;
+    fn is_closing(&self) -> bool;
+}
+
+impl<T: TimeZone> MarketTimeExt for DateTime<T> {
+    fn is_regular_hours(&self) -> bool {
+        let zoned = self.with_timezone(&Eastern);
+        (zoned.time() >= NaiveTime::from_hms(9, 30, 00))
+            && (zoned.time() < NaiveTime::from_hms(16, 00, 00))
+    }
+    fn is_opening(&self) -> bool {
+        self.with_timezone(&Eastern).time() == NaiveTime::from_hms(9, 30, 0)
+    }
+    fn is_closing(&self) -> bool {
+        self.with_timezone(&Eastern).time() == NaiveTime::from_hms(16, 0, 0)
+    }
 }
