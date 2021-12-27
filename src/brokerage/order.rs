@@ -18,12 +18,6 @@ pub enum OrderStatus {
     Expired,
 }
 
-#[derive(Debug)]
-pub struct BrokerageOrder {
-    status: OrderStatus,
-    order: Order,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OrderType {

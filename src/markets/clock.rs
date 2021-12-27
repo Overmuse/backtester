@@ -32,9 +32,7 @@ impl MarketState {
 
 #[derive(Clone)]
 struct ClockOptions {
-    start: NaiveDate,
     end: NaiveDate,
-    warmup: Duration,
     resolution: Resolution,
 }
 
@@ -60,12 +58,7 @@ impl Clock {
             .from_local_datetime(&start.and_time(*OPENING_TIME))
             .unwrap()
             + warmup;
-        let options = ClockOptions {
-            start,
-            end,
-            warmup,
-            resolution,
-        };
+        let options = ClockOptions { end, resolution };
         Self {
             datetime,
             market_state: MarketState::PreOpen,
