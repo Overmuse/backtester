@@ -53,11 +53,9 @@ dependencies = [
  "dotenv",
  "futures",
  "indicatif 0.16.2",
- "itertools",
  "lazy_static",
  "num-traits",
  "polygon",
- "priority-queue",
  "rand",
  "rust_decimal",
  "serde",
@@ -886,7 +884,8 @@ checksum = "3831453b3449ceb48b6d9c7ad7c96d5ea673e9b470a1dc578c2ce6521230884c"
 
 [[package]]
 name = "polygon"
-version = "0.13.0"
+version = "0.14.0"
+source = "git+ssh://git@github.com/Overmuse/polygon?tag=v0.14.0#e9c5d464a0bf3cfa76b32aee361a037300fdcab6"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -907,16 +906,6 @@ name = "ppv-lite86"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac74c624d6b2d21f425f752262f42188365d7b8ff1aff74c82e45136510a4857"
-
-[[package]]
-name = "priority-queue"
-version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00ba480ac08d3cfc40dea10fd466fd2c14dee3ea6fc7873bc4079eda2727caf0"
-dependencies = [
- "autocfg",
- "indexmap",
-]
 
 [[package]]
 name = "proc-macro2"
@@ -1538,7 +1527,9 @@ checksum = "5fecdca9a5291cc2b8dcf7dc02453fee791a280f3743cb0905f8822ae463b3fe"
 
 [[package]]
 name = "vila"
-version = "2.0.1"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd0ecf209339f2228cd168dc85807e222a820d8f4246a85d263ba578ed82dab7"
 dependencies = [
  "futures",
  "indicatif 0.17.0-beta.1",

@@ -70,6 +70,10 @@ impl BrokerageActor {
             BrokerageRequest::GetPositions => {
                 BrokerageResponse::Positions(self.account.positions.values().cloned().collect())
             }
+            BrokerageRequest::CancelActiveOrders => {
+                self.cancel_active_orders().await;
+                BrokerageResponse::Success
+            }
             BrokerageRequest::GetEquity => BrokerageResponse::Decimal(self.get_equity().await),
             BrokerageRequest::ClosePositions => {
                 self.close_positions().await;
@@ -214,6 +218,18 @@ impl BrokerageActor {
         self.report_event(&event)
     }
 
+    #[tracing::instrument(skip(self, order), fields(id = %order.id))]
+    async fn cancel_order(&mut self, order: Order) {
+        debug!("Order cancelled");
+        self.account.inactive_orders.push(order.clone());
+        let event = Event::OrderUpdate {
+            status: OrderStatus::Cancelled,
+            time: self.market.datetime().await,
+            order,
+        };
+        self.report_event(&event)
+    }
+
     fn report_event(&self, event: &Event) {
         for listener in self.listeners.iter() {
             listener
@@ -251,6 +267,17 @@ impl BrokerageActor {
                 .await
                 .expect("Guaranteed to exist");
             self.fill_order(order, price).await
+        }
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn cancel_active_orders(&mut self) {
+        loop {
+            let maybe_order = self.account.active_orders.pop();
+            match maybe_order {
+                Some(order) => self.cancel_order(order).await,
+                None => return,
+            }
         }
     }
 

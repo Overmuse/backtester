@@ -14,29 +14,21 @@ chrono-tz = "0.6"
 csv = "1.1.6"
 futures = { version = "0.3"}
 indicatif = "0.16"
-itertools = "0.10.3"
 lazy_static = "1.4"
 num-traits = "0.2"
 rust_decimal = "1.16"
-#polygon = { git = "ssh://git@github.com/Overmuse/polygon", tag = "v0.13.0", default-features = false, features = ["rest"], optional = false }
-polygon = { path = "../polygon", default-features = false, features = ["rest"], optional = true }
-priority-queue = "1.2.1"
+polygon = { git = "ssh://git@github.com/Overmuse/polygon", tag = "v0.14.0", default-features = false, features = ["rest"] }
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.73"
 serde_with = { version = "1.11", features = ["chrono"] }
-stream-flatten-iters = { version = "0.2", optional = true }
+stream-flatten-iters = { version = "0.2" }
 thiserror = "1.0"
 tokio = { version = "1.0", features = ["sync"] }
 tracing = "0.1.29"
 uuid = { version = "0.8", features = ["v4", "serde"] }
-serde_json = "1.0.73"
-
-[features]
-default = []
-polygon-downloader = ["polygon", "stream-flatten-iters"]
 
 [[example]]
-name = "polygon"
-required-features = ["polygon-downloader"]
+name = "random_trades"
 
 [dev-dependencies]
 anyhow = "1.0"

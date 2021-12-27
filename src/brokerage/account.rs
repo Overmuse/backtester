@@ -40,7 +40,7 @@ impl Account {
 #[cfg(test)]
 mod test {
     use super::*;
-    use chrono::Local;
+    use chrono::TimeZone;
     use chrono_tz::US::Eastern;
 
     #[test]
@@ -58,7 +58,7 @@ mod test {
         account.add_lot(
             "AAPL".into(),
             Lot {
-                fill_time: Local::now().with_timezone(&Eastern),
+                fill_time: Eastern.ymd(2021, 1, 1).and_hms(0, 0, 0),
                 price: Decimal::new(2, 0),
                 quantity: Decimal::new(3, 0),
             },

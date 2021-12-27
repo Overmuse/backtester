@@ -3,10 +3,10 @@ use crate::brokerage::{
     handle::Brokerage,
     order::{Order, OrderStatus},
 };
-use crate::data::{provider::DataProvider, DataOptions};
 use crate::markets::{actor::MarketActor, clock::MarketState, handle::Market};
 use crate::statistics::Statistics;
 use crate::strategy::Strategy;
+use crate::Options;
 use chrono::DateTime;
 use chrono_tz::Tz;
 use rust_decimal::Decimal;
@@ -19,17 +19,12 @@ pub struct Simulator<S: Strategy + Send + Sync> {
     market: Market,
     strategy: S,
     statistics: Statistics,
-    data_options: DataOptions,
+    data_options: Options,
 }
 
 impl<S: Strategy + Send + Sync> Simulator<S> {
-    pub fn new<D: 'static + DataProvider + Send + Sync>(
-        cash: Decimal,
-        strategy: S,
-        data_provider: D,
-        data_options: DataOptions,
-    ) -> Self {
-        let market = MarketActor::spawn(data_provider, data_options.clone());
+    pub fn new(cash: Decimal, strategy: S, data_options: Options) -> Self {
+        let market = MarketActor::spawn(data_options.clone());
         let brokerage = BrokerageActor::spawn(cash, market.clone());
         let statistics = Statistics::new();
         Self {

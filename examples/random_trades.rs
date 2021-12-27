@@ -1,7 +1,5 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use backtester::data::provider::polygon::PolygonDownloader;
-use backtester::data::Resolution;
 use backtester::prelude::*;
 use chrono::NaiveDate;
 use dotenv::dotenv;
@@ -48,13 +46,12 @@ async fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
-    let downloader = PolygonDownloader;
-    let data_options = DataOptions::new(
+    let data_options = Options::new(
         vec!["E".to_string(), "M".to_string()],
         NaiveDate::from_ymd(2020, 1, 1),
         NaiveDate::from_ymd(2020, 12, 31),
     )
     .set_resolution(Resolution::Minute);
-    let simulator = Simulator::new(Decimal::new(100000, 0), Strat, downloader, data_options);
+    let simulator = Simulator::new(Decimal::new(100000, 0), Strat, data_options);
     simulator.run().await
 }

@@ -9,6 +9,7 @@ use tokio::sync::oneshot::{self, Sender as OneshotSender};
 pub(crate) enum BrokerageRequest {
     GetPositions,
     GetEquity,
+    CancelActiveOrders,
     ClosePositions,
     SendOrder(Order),
     ReconcileOrders,
@@ -82,6 +83,12 @@ impl Brokerage {
         } else {
             unreachable!()
         }
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn cancel_active_orders(&self) {
+        self.send_request(BrokerageRequest::CancelActiveOrders)
+            .await;
     }
 
     #[tracing::instrument(skip(self))]

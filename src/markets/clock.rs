@@ -1,7 +1,7 @@
-use crate::data::Resolution;
 use crate::utils::nyse_calendar::NyseCalendar;
+use crate::Resolution;
 use bdays::{HolidayCalendar, HolidayCalendarCache};
-use chrono::{DateTime, Duration, Local, NaiveDate, NaiveTime, TimeZone};
+use chrono::{DateTime, Duration, NaiveDate, NaiveTime, TimeZone};
 use chrono_tz::{Tz, US::Eastern};
 
 lazy_static! {
@@ -56,10 +56,9 @@ impl Clock {
         if !calendar.is_bday(start) {
             start = calendar.advance_bdays(start, 1);
         }
-        let datetime = Local
+        let datetime = Eastern
             .from_local_datetime(&start.and_time(*OPENING_TIME))
             .unwrap()
-            .with_timezone(&Eastern)
             + warmup;
         let options = ClockOptions {
             start,
@@ -109,7 +108,7 @@ impl Clock {
 
     pub fn previous_datetime(&self) -> DateTime<Tz> {
         if self.is_start_of_day() {
-            Local
+            Eastern
                 .from_local_datetime(
                     &self
                         .calendar
@@ -118,7 +117,6 @@ impl Clock {
                         .and_time(*CLOSING_TIME),
                 )
                 .unwrap()
-                .with_timezone(&Eastern)
         } else {
             match self.options.resolution {
                 Resolution::Minute => self.datetime - Duration::minutes(1),
@@ -133,7 +131,7 @@ impl Clock {
 
     pub fn next_datetime(&self) -> DateTime<Tz> {
         if self.is_end_of_day() {
-            Local
+            Eastern
                 .from_local_datetime(
                     &self
                         .calendar
@@ -141,7 +139,6 @@ impl Clock {
                         .and_time(*OPENING_TIME),
                 )
                 .unwrap()
-                .with_timezone(&Eastern)
         } else {
             match self.options.resolution {
                 Resolution::Minute => self.datetime + Duration::minutes(1),
@@ -170,15 +167,14 @@ impl Clock {
 
         if self.is_end_of_day() {
             if let MarketState::Closed = state {
-                self.datetime = Local
+                self.datetime = Eastern
                     .from_local_datetime(
                         &(self
                             .calendar
                             .advance_bdays(self.datetime.date().naive_local(), 1))
                         .and_time(*OPENING_TIME),
                     )
-                    .unwrap()
-                    .with_timezone(&Eastern);
+                    .unwrap();
             }
             self.market_state = state.next();
         } else {

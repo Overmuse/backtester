@@ -1,7 +1,8 @@
-use crate::data::{provider::DataProvider, Aggregate, DataOptions};
 use crate::markets::clock::{Clock, MarketState};
 use crate::markets::data_manager::DataManager;
 use crate::markets::handle::*;
+use crate::Aggregate;
+use crate::Options;
 use chrono::prelude::*;
 use chrono_tz::Tz;
 use indicatif::ProgressBar;
@@ -18,10 +19,7 @@ pub(crate) struct MarketActor {
 }
 
 impl MarketActor {
-    pub fn spawn<D: 'static + DataProvider + Send + Sync>(
-        data_provider: D,
-        data_options: DataOptions,
-    ) -> Market {
+    pub fn spawn(data_options: Options) -> Market {
         let clock = Clock::new(
             data_options.start,
             data_options.end,
@@ -29,7 +27,7 @@ impl MarketActor {
             data_options.resolution,
         );
         let progress = crate::utils::progress(clock.simulation_periods() as u64, "Simulating");
-        let data_manager = DataManager::new(data_provider, data_options);
+        let data_manager = DataManager::new(data_options);
         let (tx, rx) = unbounded_channel();
         let handle = Market::new(tx);
 
